@@ -35,6 +35,10 @@
             <button id="btnGetEOQ" onclick="fetchEOQRecommendations()" class="btn-primary" style="background: #059669;">
                 <i class="fas fa-magic"></i> 2. توليد خطة الشراء
             </button>
+            <button id="btnGetEOQExcel" onclick="document.getElementById('excelFileInput').click()" class="btn-secondary" style="border-color: #0284c7; color: #0284c7;">
+                <i class="fas fa-file-excel"></i> 3. توليد من ملف Excel خارجي
+            </button>
+            <input type="file" id="excelFileInput" style="display:none" accept=".xlsx, .xls, .csv" onchange="uploadExcelForSmartPlan(this)" />
         </div>
     </div>
 
@@ -85,6 +89,36 @@
     </div>
 </div>
 
+    <!-- Mapping Modal -->
+    <div id="excelMappingModal" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-md shadow-lg p-6 w-[450px] max-w-full">
+            <h3 class="text-lg font-bold text-[#063955] mb-2"><i class="fas fa-columns text-[#0284c7]"></i> مطابقة أعمدة الإكسل</h3>
+            <p class="text-sm text-gray-500 mb-6">يرجى تحديد الأعمدة الصحيحة من ملفك لضمان دقة التحليل والتنبؤ.</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">اسم الدواء (Drug Name)</label>
+                    <select id="mapDrugCol" class="w-full border border-gray-300 rounded p-2 text-sm focus:border-[#0284c7] focus:ring-1 focus:ring-[#0284c7]"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">تاريخ البيع (Date)</label>
+                    <select id="mapDateCol" class="w-full border border-gray-300 rounded p-2 text-sm focus:border-[#0284c7] focus:ring-1 focus:ring-[#0284c7]"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">الكمية المباعة (Quantity)</label>
+                    <select id="mapQtyCol" class="w-full border border-gray-300 rounded p-2 text-sm focus:border-[#0284c7] focus:ring-1 focus:ring-[#0284c7]"></select>
+                </div>
+            </div>
+
+            <div class="mt-8 flex justify-end gap-2">
+                <button onclick="closeMappingModal()" class="btn-secondary">إلغاء</button>
+                <button onclick="submitExcelMapping()" id="btnSubmitMapping" class="btn-primary" style="background:#0284c7;">
+                    تأكيد وتوليد الخطة <i class="fas fa-magic"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
 <script>
     async function runABCAlgorithm() {
         const btn = document.getElementById('btnCalcABC');
@@ -129,6 +163,112 @@
             }
         } catch (err) { showAlert('error', 'خطأ', 'فشل الاتصال.'); }
         finally { btn.innerHTML = '<i class="fas fa-magic"></i> 2. توليد خطة الشراء'; btn.disabled = false; }
+    }
+
+    let pendingExcelFile = null;
+
+    async function uploadExcelForSmartPlan(input) {
+        if (!input.files || input.files.length === 0) return;
+        
+        const btn = document.getElementById('btnGetEOQExcel');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري قراءة الملف...';
+        btn.disabled = true;
+
+        pendingExcelFile = input.files[0];
+        const formData = new FormData();
+        formData.append('excelFile', pendingExcelFile);
+
+        try {
+            const response = await fetch('/InventoryIntelligence/ExtractExcelHeaders', { 
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    populateMappingOptions(data.headers);
+                    document.getElementById('excelMappingModal').classList.remove('hidden');
+                } else {
+                    showAlert('error', 'تنبيه', data.message || "فشل قراءة الملف");
+                }
+            } else {
+                showAlert('error', 'تنبيه', await response.text());
+            }
+        } catch (err) { showAlert('error', 'خطأ', 'فشل الاتصال.'); }
+        finally { 
+            btn.innerHTML = '<i class="fas fa-file-excel"></i> 3. توليد من ملف Excel خارجي'; 
+            btn.disabled = false; 
+            input.value = ''; 
+        }
+    }
+
+    function populateMappingOptions(headers) {
+        const selects = ['mapDrugCol', 'mapDateCol', 'mapQtyCol'];
+        selects.forEach(id => {
+            const el = document.getElementById(id);
+            el.innerHTML = '';
+            headers.forEach((h, index) => {
+                el.innerHTML += `<option value="${index}">${h}</option>`;
+            });
+        });
+        
+        if(headers.length >= 3) {
+            document.getElementById('mapDrugCol').selectedIndex = 0;
+            document.getElementById('mapDateCol').selectedIndex = 1;
+            document.getElementById('mapQtyCol').selectedIndex = 2;
+        }
+    }
+
+    function closeMappingModal() {
+        document.getElementById('excelMappingModal').classList.add('hidden');
+        pendingExcelFile = null;
+    }
+
+    async function submitExcelMapping() {
+        if (!pendingExcelFile) return;
+        
+        const drugCol = document.getElementById('mapDrugCol').value;
+        const dateCol = document.getElementById('mapDateCol').value;
+        const qtyCol = document.getElementById('mapQtyCol').value;
+
+        closeMappingModal();
+        
+        const container = document.getElementById('alert-container');
+        container.classList.add('hidden');
+        
+        const btn = document.getElementById('btnGetEOQExcel');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحليل المعمق...';
+        btn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('excelFile', pendingExcelFile);
+        formData.append('drugCol', drugCol);
+        formData.append('dateCol', dateCol);
+        formData.append('qtyCol', qtyCol);
+
+        try {
+            const response = await fetch('/InventoryIntelligence/GenerateSmartPlanFromExcel', { 
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    currentPlanId = data.planId;
+                    showAlert('success', 'نجاح الاستيراد', data.message);
+                    await loadPlanDetails(currentPlanId);
+                } else {
+                    showAlert('error', 'تنبيه', data.message || "حدث خطأ أثناء تحليل الإكسل");
+                }
+            } else {
+                showAlert('error', 'تنبيه', await response.text());
+            }
+        } catch (err) { showAlert('error', 'خطأ', 'فشل الاتصال.'); }
+        finally { 
+            btn.innerHTML = '<i class="fas fa-file-excel"></i> 3. توليد من ملف Excel خارجي'; 
+            btn.disabled = false; 
+            pendingExcelFile = null;
+        }
     }
 
     async function loadPlanDetails(planId) {

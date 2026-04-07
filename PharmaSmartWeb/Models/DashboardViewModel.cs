@@ -127,6 +127,18 @@ namespace PharmaSmartWeb.Models
         public double SalesPercentage { get; set; }
     }
 
+    public class BranchProductivityViewModel
+    {
+        public int BranchId { get; set; }
+        public string BranchName { get; set; }
+        public int InvoiceCount { get; set; }
+        public decimal TotalSales { get; set; }
+        public decimal TotalExpenses { get; set; }
+        public decimal COGS { get; set; }
+        public decimal NetProfit { get; set; }
+        public double ContributionPercentage { get; set; }
+    }
+
     public class ShortageForecastViewModel
     {
         public int DrugId { get; set; }

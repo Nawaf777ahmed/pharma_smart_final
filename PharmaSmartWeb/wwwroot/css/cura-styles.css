@@ -105,3 +105,110 @@ input:focus, select:focus, textarea:focus {
     box-shadow: 0 0 0 1px #063955 !important;
     outline: none;
 }
+/* =====================================================
+   📱 GLOBAL RESPONSIVE SYSTEM
+   يُطبَّق على جميع صفحات النظام
+   ===================================================== */
+
+/* جعل الجداول قابلة للتمرير الأفقي على الهاتف */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* إخفاء الـ sidebar على الهاتف */
+#mobileSidebarOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 49;
+}
+
+/* زر الهامبرغر - مخفي على Desktop */
+#btnToggleSidebar {
+    display: none;
+}
+
+/* ── Tablet (≤ 1024px) ── */
+@media (max-width: 1024px) {
+    /* تضييق الـ Sidebar */
+    aside.fixed { width: 220px !important; }
+    main.mr-64 { margin-right: 220px !important; }
+}
+
+/* ── Mobile (≤ 768px) ── */
+@media (max-width: 768px) {
+    /* إخفاء الـ Sidebar وتحريكه للخارج */
+    aside.fixed {
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+        z-index: 50 !important;
+        width: 280px !important;
+        box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+    }
+    aside.fixed.sidebar-open {
+        transform: translateX(0);
+    }
+
+    /* إزالة الهامش الجانبي من المحتوى الرئيسي */
+    main.mr-64 {
+        margin-right: 0 !important;
+        padding: 12px !important;
+    }
+
+    /* Header */
+    header.sticky {
+        padding: 10px 12px !important;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    /* إظهار زر الهامبرغر */
+    #btnToggleSidebar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        cursor: pointer;
+        color: #063955;
+        flex-shrink: 0;
+    }
+
+    /* إظهار Overlay */
+    #mobileSidebarOverlay.active {
+        display: block;
+    }
+
+    /* الجداول: قابلة للتمرير */
+    table { display: block; overflow-x: auto; white-space: nowrap; }
+
+    /* الكروت والشبكات */
+    .grid { grid-template-columns: 1fr !important; }
+    .md\:grid-cols-2 { grid-template-columns: 1fr !important; }
+    .md\:grid-cols-3 { grid-template-columns: 1fr !important; }
+    .md\:grid-cols-4 { grid-template-columns: 1fr !important; }
+    .lg\:grid-cols-3 { grid-template-columns: 1fr !important; }
+    .lg\:grid-cols-4 { grid-template-columns: 1fr !important; }
+
+    /* العناوين في Header */
+    h2.text-2xl { font-size: 16px !important; }
+
+    /* إخفاء اختيار الفرع في Header على الهاتف لتوفير المساحة */
+    .branch-selector { display: none; }
+
+    /* تصغير أزرار Header */
+    header .flex.items-center.gap-4 { gap: 6px !important; }
+}
+
+/* ── Small Mobile (≤ 480px) ── */
+@media (max-width: 480px) {
+    main.mr-64 { padding: 8px !important; }
+    header.sticky { padding: 8px !important; }
+    h2.text-2xl { font-size: 14px !important; }
+}

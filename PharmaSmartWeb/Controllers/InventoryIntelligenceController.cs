@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Http;
+using ExcelDataReader;
 
 namespace PharmaSmartWeb.Controllers
 {
@@ -185,6 +187,198 @@ namespace PharmaSmartWeb.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, planId = plan.PlanId, message = "تم التوليد بنجاح" });
+        }
+
+        private class ExcelSalesRecord {
+            public string DrugName { get; set; } = string.Empty;
+            public DateTime SaleDate { get; set; }
+            public int Quantity { get; set; }
+        }
+
+        [HttpPost]
+        public IActionResult ExtractExcelHeaders(IFormFile excelFile)
+        {
+            if (excelFile == null || excelFile.Length == 0) return BadRequest("ملف غير صالح.");
+            
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+            var headers = new List<string>();
+            
+            try {
+                using (var stream = excelFile.OpenReadStream())
+                using (var reader = excelFile.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ExcelReaderFactory.CreateCsvReader(stream) : ExcelReaderFactory.CreateReader(stream))
+                {
+                    var result = reader.AsDataSet(new ExcelDataSetConfiguration() { ConfigureDataTable = (_) => new ExcelDataTableConfiguration() { UseHeaderRow = true } });
+                    var table = result.Tables[0];
+                    for (int i = 0; i < table.Columns.Count; i++)
+                    {
+                        var headerName = table.Columns[i].ColumnName;
+                        headers.Add(string.IsNullOrWhiteSpace(headerName) ? $"Column {i}" : headerName);
+                    }
+                }
+                return Ok(new { success = true, headers = headers });
+            } catch (Exception ex) { return BadRequest($"فشل قراءة الملف الأجنبي ({ex.Message})، تأكد أنه بصيغة مساعدة (xlsx, xls, csv)."); }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> GenerateSmartPlanFromExcel([FromForm] IFormFile excelFile, [FromForm] int drugCol, [FromForm] int dateCol, [FromForm] int qtyCol)
+        {
+            if (excelFile == null || excelFile.Length == 0)
+                return BadRequest("يرجى اختيار ملف الإكسل.");
+
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+            var externalSales = new List<ExcelSalesRecord>();
+            
+            using (var stream = excelFile.OpenReadStream())
+            {
+                using (var reader = excelFile.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ExcelReaderFactory.CreateCsvReader(stream) : ExcelReaderFactory.CreateReader(stream))
+                {
+                    var result = reader.AsDataSet(new ExcelDataSetConfiguration()
+                    {
+                        ConfigureDataTable = (_) => new ExcelDataTableConfiguration() { UseHeaderRow = true }
+                    });
+                    
+                    var table = result.Tables[0];
+                    int maxIndex = Math.Max(drugCol, Math.Max(dateCol, qtyCol));
+
+                    foreach (System.Data.DataRow row in table.Rows)
+                    {
+                        if (row.ItemArray.Length > maxIndex)
+                        {
+                            if (row[drugCol] != null && row[dateCol] != null && row[qtyCol] != null)
+                            {
+                                string drugName = row[drugCol].ToString().Trim();
+                                if (!string.IsNullOrEmpty(drugName) && 
+                                    DateTime.TryParse(row[dateCol].ToString(), out DateTime sDate))
+                                {
+                                    string qtyStr = row[qtyCol].ToString();
+                                    int finalQty = 0;
+                                    if (int.TryParse(qtyStr, out int qty)) { finalQty = qty; }
+                                    else if (double.TryParse(qtyStr, out double dQty)) { finalQty = (int)dQty; }
+                                    
+                                    if (finalQty > 0)
+                                        externalSales.Add(new ExcelSalesRecord { DrugName = drugName, SaleDate = sDate, Quantity = finalQty });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!externalSales.Any())
+                return BadRequest("ملف الإكسل فارغ أو لم يطابق البيانات المختارة (تحقق من صحة اختيار الأعمدة الخاصة بالدواء، التاريخ، والكمية).");
+
+            int currentBranchId = ReportScopeId > 0 ? ReportScopeId : 1;
+
+            var shortages = await _context.Branchinventory
+                .Include(i => i.Drug)
+                .Where(i => i.BranchId == currentBranchId && i.StockQuantity <= i.MinimumStockLevel)
+                .ToListAsync();
+
+            if (!shortages.Any())
+                return BadRequest("لا توجد نواقص في المخزون الحالي لتوليد الخطة.");
+
+            var plan = new PurchasePlan
+            {
+                BranchId = currentBranchId,
+                CreatedBy = int.Parse(User.FindFirst("UserID")?.Value ?? "1"),
+                Status = "Draft",
+                Notes = $"خطة مشتريات مبنية على مبيعات خارجية (Excel) - {DateTime.Now:yyyy-MM-dd}"
+            };
+            _context.PurchasePlans.Add(plan);
+            await _context.SaveChangesAsync(); 
+
+            decimal accumulatedCost = 0;
+            decimal totalLiquidity = await _context.Journaldetails
+                .Where(jd => jd.Journal.IsPosted == true &&
+                             jd.Account.IsActive == true && jd.Account.IsParent == false &&
+                             (jd.Account.AccountName.Contains("صندوق") || jd.Account.AccountName.Contains("بنك")) &&
+                             (currentBranchId == 0 || jd.Journal.BranchId == currentBranchId))
+                .SumAsync(jd => jd.Debit - jd.Credit);
+
+            var groupedExcel = externalSales
+                .GroupBy(s => new { DrugName = s.DrugName.ToLower(), Date = s.SaleDate.Date })
+                .Select(g => new { DrugName = g.Key.DrugName, Date = g.Key.Date.ToString("yyyy-MM-dd"), Quantity = g.Sum(x => x.Quantity) })
+                .ToList();
+
+            foreach (var item in shortages)
+            {
+                string targetNameLower = item.Drug?.DrugName?.Trim().ToLower() ?? "";
+                
+                var salesData = groupedExcel
+                    .Where(e => e.DrugName == targetNameLower)
+                    .Select(e => new { date = e.Date, quantity = e.Quantity })
+                    .ToList();
+                
+                string jsonPayload = System.Text.Json.JsonSerializer.Serialize(salesData);
+                
+                decimal forecastedDemand = 0;
+                decimal forecastAccuracy = 0;
+                if (salesData.Any())
+                {
+                    try
+                    {
+                        string pyOut = CallProphetScript(jsonPayload);
+                        var pyResult = System.Text.Json.JsonSerializer.Deserialize<ProphetResult>(pyOut, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        if (pyResult != null)
+                        {
+                            forecastedDemand = pyResult.Forecast;
+                            forecastAccuracy = pyResult.Accuracy;
+                        }
+                    }
+                    catch { } 
+                }
+
+                if (forecastedDemand <= 0)
+                {
+                    forecastedDemand = salesData.Sum(s => s.quantity); 
+                    if (forecastedDemand == 0) continue; 
+                }
+
+                decimal currentWAC = (item.AverageCost != null && item.AverageCost > 0) ? item.AverageCost.Value : 1m;
+                decimal annualDemand_D = forecastedDemand * 12; 
+                decimal orderingCost_S = 5000;
+                decimal holdingCostPercentage_H = 0.15m;
+
+                string abc = item.Abccategory ?? "C";
+                if (abc == "A") { orderingCost_S = 2000; holdingCostPercentage_H = 0.30m; }
+                else if (abc == "C") { orderingCost_S = 10000; holdingCostPercentage_H = 0.05m; }
+
+                decimal holdingCost_H = currentWAC * holdingCostPercentage_H <= 0 ? 1 : currentWAC * holdingCostPercentage_H;
+                int recommendedQty = (int)Math.Round(Math.Sqrt((double)((2 * annualDemand_D * orderingCost_S) / holdingCost_H)));
+
+                bool isLifeSaving = false;
+                if (item.Drug.DrugName != null && (item.Drug.DrugName.Contains("Insulin") || item.Drug.IsLifeSaving == true))
+                {
+                    isLifeSaving = true;
+                    int safeBuffer = (item.MinimumStockLevel == 0 ? 10 : item.MinimumStockLevel) * 4;
+                    if (recommendedQty < safeBuffer) recommendedQty = safeBuffer;
+                }
+
+                decimal itemTotalCost = recommendedQty * currentWAC;
+                accumulatedCost += itemTotalCost;
+                string status = accumulatedCost <= totalLiquidity ? "في حدود الميزانية" : "عجز مالي - مؤجل";
+
+                _context.PurchasePlanDetails.Add(new PurchasePlanDetail
+                {
+                    PlanId = plan.PlanId,
+                    DrugId = item.DrugId,
+                    CurrentStock = item.StockQuantity,
+                    ABCCategory = isLifeSaving ? "🚑 منقذ" : abc,
+                    ForecastedDemand = Math.Round(forecastedDemand, 0),
+                    ForecastAccuracy = Math.Round(forecastAccuracy, 2),
+                    ProposedQuantity = recommendedQty,
+                    ApprovedQuantity = recommendedQty,
+                    UnitCostEstimate = currentWAC,
+                    TotalCost = itemTotalCost,
+                    IsLifeSaving = isLifeSaving,
+                    Status = status
+                });
+            }
+
+            plan.EstimatedTotalCost = accumulatedCost;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { success = true, planId = plan.PlanId, message = "تم التوليد بنجاح من بيانات الإكسل المرفوعة" });
         }
 
         private string CallProphetScript(string jsonPayload)

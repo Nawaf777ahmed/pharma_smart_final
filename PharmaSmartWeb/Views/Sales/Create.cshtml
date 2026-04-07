@@ -5,6 +5,10 @@
 }
 
 <script src="~/lib/sweetalert2.js"></script>
+<script src="~/js/offline-db.js"></script>
+
+<!-- شريط حالة الاتصال -->
+<div id="offlineBar" style="display:none; position:fixed; top:0; left:0; right:0; z-index:9999; padding:10px 20px; font-size:13px; font-weight:700; text-align:center;"></div>
 <style>
     body { background-color: #f4f6f8; }
     .enterprise-panel { background: white; border: 1px solid #d1d5db; border-radius: 2px; }
@@ -43,6 +47,74 @@
     
     .btn-icon { background: transparent; color: #94a3b8; border: none; cursor: pointer; display: inline-flex; justify-content: center; align-items: center;}
     .btn-icon:hover { color: #ef4444; }
+
+    /* ==========================================
+       📱 RESPONSIVE LAYOUT
+    ========================================== */
+
+    /* الشاشة الكبيرة (Desktop) - العرض الأصلي */
+    .pos-grid { display: grid; grid-template-columns: 1fr 350px; gap: 24px; }
+    .pos-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
+    .pos-header-actions { display: flex; gap: 12px; }
+
+    /* الشاشة المتوسطة (Tablet ≤ 1024px) */
+    @@media (max-width: 1024px) {
+        .pos-grid { grid-template-columns: 1fr 300px; gap: 16px; }
+    }
+
+    /* الهاتف والشاشات الصغيرة (≤ 768px) */
+    @@media (max-width: 768px) {
+        .pos-grid { grid-template-columns: 1fr; gap: 16px; }
+        .pos-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+        .pos-header-actions { width: 100%; }
+        .pos-header-actions .btn-submit { flex: 1; justify-content: center; }
+        .pos-header-actions .btn-cancel { flex: 1; justify-content: center; }
+        .pos-title { font-size: 18px !important; }
+        .search-big { font-size: 14px; padding: 12px 40px 12px 12px; }
+        .cart-table th:nth-child(3), .cart-table td:nth-child(3) { display: none; }
+        .summary-value { font-size: 40px; }
+        .payment-input { width: 80px; }
+    }
+
+    /* الهاتف الصغير جداً (≤ 480px) */
+    @@media (max-width: 480px) {
+        .pos-grid { gap: 12px; }
+        .summary-value { font-size: 36px; }
+        .cart-table th:nth-child(4), .cart-table td:nth-child(4) { display: none; }
+    }
+
+    /* ==========================================
+       📱 زر POS عائم على الهاتف
+    ========================================== */
+    .btn-submit-float {
+        display: none;
+    }
+    @@media (max-width: 768px) {
+        /* زر حفظ عائم ثابت في أسفل الشاشة على الهاتف */
+        .btn-submit-float {
+            display: flex;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            z-index: 1000;
+            background: linear-gradient(135deg, #00314e 0%, #004870 100%);
+            color: white;
+            padding: 16px 24px;
+            font-size: 15px;
+            font-weight: 900;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+        }
+        .btn-submit-float:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+        /* مساحة في الأسفل حتى لا يُغطي الزر العائم المحتوى */
+        .pos-mobile-bottom-space { height: 70px; }
+    }
 </style>
 
 <form id="salesForm" asp-action="Create" method="post" style="max-width:1200px; margin:0 auto; padding: 24px 16px;">
@@ -50,22 +122,22 @@
     <div id="hiddenInputsContainer"></div>
 
     <!-- Header Actions -->
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px;">
+    <div class="pos-header">
         <div>
             <div style="font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px;">المبيعات / تسجيل فاتورة بيع</div>
-            <h2 style="font-size:24px; font-weight:900; color:#063955; margin:0;">فاتورة مبيعات جديدة</h2>
+            <h2 class="pos-title" style="font-size:24px; font-weight:900; color:#063955; margin:0;">فاتورة مبيعات جديدة</h2>
         </div>
-        <div style="display:flex; gap:12px;">
+        <div class="pos-header-actions">
             <a href="/Home/CommercialHub" class="btn-cancel">
                 <span class="material-symbols-outlined" style="font-size:16px;">arrow_forward</span> إلغاء
             </a>
             <button type="button" onclick="submitPOS()" id="btnSaveSales" disabled class="btn-submit">
-                حفظ وإصدار الفاتورة
+                <span class="material-symbols-outlined" style="font-size:16px;">receipt_long</span> حفظ وإصدار الفاتورة
             </button>
         </div>
     </div>
 
-    <div style="display:grid; grid-template-columns:1fr 350px; gap:24px;">
+    <div class="pos-grid">
         
         <!-- Main Form Column -->
         <div style="display:flex; flex-direction:column; gap:24px;">
@@ -196,7 +268,15 @@
 
         </div>
     </div>
+
+    <!-- زر عائم للهاتف فقط -->
+    <div class="pos-mobile-bottom-space"></div>
 </form>
+
+<!-- زر الحفظ العائم (يظهر فقط على الهاتف) -->
+<button type="button" onclick="submitPOS()" id="btnSaveSalesFloat" disabled class="btn-submit-float">
+    <span class="material-symbols-outlined">receipt_long</span> حفظ وإصدار الفاتورة
+</button>
 
 <!-- Modal إضافة عميل -->
 <div id="customerModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.6); z-index:100; align-items:center; justify-content:center; padding:16px;">
@@ -431,9 +511,13 @@
 
         if (isValid) {
             btnSave.disabled = false;
+            const floatBtn = document.getElementById('btnSaveSalesFloat');
+            if (floatBtn) floatBtn.disabled = false;
             warningBox.style.display = 'none';
         } else {
             btnSave.disabled = true;
+            const floatBtn = document.getElementById('btnSaveSalesFloat');
+            if (floatBtn) floatBtn.disabled = true;
             if (errorMsg && cart.length > 0) { 
                 warningBox.innerText = errorMsg; 
                 warningBox.style.display = 'block'; 
@@ -443,22 +527,125 @@
         }
     }
 
-    function submitPOS() {
-        if(!document.getElementById('btnSaveSales').disabled) {
-            const form = document.getElementById('salesForm');
-            let cashVal = parseFloat(document.getElementById('valCash').value) || 0;
-            let bankVal = parseFloat(document.getElementById('valBank').value) || 0;
-            let accCash = document.getElementById('accCash').value;
-            let accBank = document.getElementById('accBank').value;
+    // =======================================
+    // 🌐 منطق الأوفلاين والمزامنة
+    // =======================================
+    const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
 
-            form.insertAdjacentHTML('beforeend', `<input type="hidden" name="CashAmount" value="${cashVal}" />`);
-            form.insertAdjacentHTML('beforeend', `<input type="hidden" name="BankAmount" value="${bankVal}" />`);
-            if(cashVal > 0) form.insertAdjacentHTML('beforeend', `<input type="hidden" name="CashAccountId" value="${accCash}" />`);
-            if(bankVal > 0) form.insertAdjacentHTML('beforeend', `<input type="hidden" name="BankAccountId" value="${accBank}" />`);
-
-            form.submit();
+    function updateOfflineBar() {
+        const bar = document.getElementById('offlineBar');
+        if (!navigator.onLine) {
+            bar.style.display = 'block';
+            bar.style.background = '#fef2f2';
+            bar.style.color = '#dc2626';
+            bar.style.borderBottom = '2px solid #fca5a5';
+            bar.innerHTML = '⚠️ أنت في وضع عدم الاتصال - الفواتير ستُحفظ محلياً وتُزامن عند عودة الإنترنت';
+        } else {
+            bar.style.display = 'none';
         }
     }
+
+    // عند عودة الإنترنت - ابدأ المزامنة تلقائياً
+    window.addEventListener('online', async () => {
+        updateOfflineBar();
+        const count = await getPendingSalesCount();
+        if (count > 0) {
+            const bar = document.getElementById('offlineBar');
+            bar.style.display = 'block';
+            bar.style.background = '#ecfdf5';
+            bar.style.color = '#065f46';
+            bar.style.borderBottom = '2px solid #6ee7b7';
+            bar.innerHTML = `🔄 جاري مزامنة ${count} فاتورة معلقة مع الخادم...`;
+
+            const result = await syncPendingSales(antiForgeryToken);
+            
+            if (result.synced > 0) {
+                bar.innerHTML = `✅ تمت مزامنة ${result.synced} فاتورة بنجاح!`;
+                setTimeout(() => { bar.style.display = 'none'; }, 4000);
+            } else {
+                bar.style.display = 'none';
+            }
+        }
+    });
+
+    window.addEventListener('offline', () => updateOfflineBar());
+
+    // تحديث الأدوية في IndexedDB عند تحميل الصفحة للمرة الأولى (أونلاين)
+    if (navigator.onLine && typeof inventoryDrugs !== 'undefined' && inventoryDrugs.length > 0) {
+        saveDrugsToCache(inventoryDrugs).catch(() => {});
+    }
+
+    // إذا كنا أوفلاين وقائمة الأدوية فارغة، احمّل من IndexedDB
+    (async () => {
+        if (!navigator.onLine || inventoryDrugs.length === 0) {
+            const cached = await getDrugsFromCache();
+            if (cached && cached.length > 0) {
+                inventoryDrugs.length = 0;
+                cached.forEach(d => inventoryDrugs.push(d));
+            }
+        }
+        updateOfflineBar();
+    })();
+
+    // =======================================
+    // 💾 حفظ الفاتورة (أونلاين أو أوفلاين)
+    // =======================================
+    async function submitPOS() {
+        if (document.getElementById('btnSaveSales').disabled) return;
+        
+        const cashVal = parseFloat(document.getElementById('valCash').value) || 0;
+        const bankVal = parseFloat(document.getElementById('valBank').value) || 0;
+        const accCash = parseInt(document.getElementById('accCash').value) || 0;
+        const accBank = parseInt(document.getElementById('accBank').value) || 0;
+        const customerId = parseInt(document.getElementById('CustomerId').value) || 0;
+        const discount = parseFloat(document.getElementById('inputDiscount').value) || 0;
+        const tax = parseFloat(document.getElementById('inputTax').value) || 0;
+
+        if (navigator.onLine) {
+            // ← الطريقة العادية: أرسل النموذج للسيرفر
+            const form = document.getElementById('salesForm');
+            form.insertAdjacentHTML('beforeend', `<input type="hidden" name="CashAmount" value="${cashVal}" />`);
+            form.insertAdjacentHTML('beforeend', `<input type="hidden" name="BankAmount" value="${bankVal}" />`);
+            if (cashVal > 0) form.insertAdjacentHTML('beforeend', `<input type="hidden" name="CashAccountId" value="${accCash}" />`);
+            if (bankVal > 0) form.insertAdjacentHTML('beforeend', `<input type="hidden" name="BankAccountId" value="${accBank}" />`);
+            form.submit();
+        } else {
+            // ← وضع الأوفلاين: احفظ في IndexedDB
+            const saleData = {
+                CustomerId: customerId,
+                Discount: discount,
+                TaxAmount: tax,
+                CashAmount: cashVal,
+                CashAccountId: accCash,
+                BankAmount: bankVal,
+                BankAccountId: accBank,
+                Items: cart.map(item => {
+                    const isMain = item.unitType === 'main';
+                    const serverQty = isMain ? (item.uiQty * item.conv) : item.uiQty;
+                    const serverUnitPrice = item.packPrice / item.conv;
+                    return { DrugId: item.id, Quantity: serverQty, UnitPrice: serverUnitPrice };
+                })
+            };
+
+            try {
+                await savePendingSale(saleData);
+                const count = await getPendingSalesCount();
+                cart = [];
+                renderCart();
+
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ تم حفظ الفاتورة محلياً',
+                    html: `الفاتورة رقم <b>#offline-${count}</b> محفوظة وستُزامن تلقائياً عند عودة الإنترنت.<br><small style="color:#64748b">إجمالي الفواتير المعلقة: ${count}</small>`,
+                    confirmButtonText: 'حسناً',
+                    confirmButtonColor: '#059669'
+                });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'خطأ', text: 'فشل حفظ الفاتورة محلياً.' });
+            }
+        }
+    }
+
 
     function openCustomerModal() {
         document.getElementById('customerModal').style.display = 'flex';

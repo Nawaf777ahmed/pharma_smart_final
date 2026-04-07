@@ -704,5 +704,132 @@ namespace PharmaSmartWeb.Controllers
             TempData["Success"] = "تم إغلاق الوردية ومطابقة الصندوق بنجاح.";
             return RedirectToAction("SalesHub", "Home");
         }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [HasPermission("Sales", "Add")]
+        public async Task<IActionResult> SyncOfflineSale([FromForm] string saleJson)
+        {
+            if (string.IsNullOrEmpty(saleJson))
+                return BadRequest(new { success = false, message = "بيانات الفاتورة فارغة." });
+
+            try
+            {
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var offlineData = System.Text.Json.JsonSerializer.Deserialize<OfflineSaleDto>(saleJson, options);
+                if (offlineData == null) return BadRequest(new { success = false, message = "فاتورة غير صالحة." });
+
+                var strategy = _context.Database.CreateExecutionStrategy();
+                int newSaleId = 0;
+
+                await strategy.ExecuteAsync(async () =>
+                {
+                    using var transaction = await _context.Database.BeginTransactionAsync();
+                    try
+                    {
+                        var userId = await GetValidUserIdAsync();
+
+                        var sale = new Sales
+                        {
+                            UserId = userId,
+                            BranchId = ActiveBranchId,
+                            SaleDate = DateTime.Now,
+                            IsReturn = false,
+                            CustomerId = offlineData.CustomerId > 0 ? offlineData.CustomerId : null,
+                            Discount = offlineData.Discount,
+                            TaxAmount = offlineData.TaxAmount,
+                        };
+
+                        decimal grossTotal = 0, totalCogs = 0;
+
+                        foreach (var item in offlineData.Items)
+                        {
+                            int itemQty = (int)Math.Round(item.Quantity);
+                            grossTotal += item.Quantity * item.UnitPrice;
+                            var inventory = await _context.Branchinventory.Include(b => b.Drug)
+                                .FirstOrDefaultAsync(b => b.DrugId == item.DrugId && b.BranchId == ActiveBranchId);
+                            if (inventory != null && inventory.StockQuantity >= itemQty)
+                            {
+                                decimal costPerUnit = (inventory.AverageCost ?? 0) / (inventory.Drug?.ConversionFactor > 0 ? inventory.Drug.ConversionFactor : 1);
+                                totalCogs += item.Quantity * costPerUnit;
+                                inventory.StockQuantity -= itemQty;
+                                _context.Branchinventory.Update(inventory);
+                                _context.Stockmovements.Add(new Stockmovements { BranchId = ActiveBranchId, DrugId = item.DrugId, MovementDate = DateTime.Now, MovementType = "Sale Out (Offline Sync)", Quantity = -itemQty, UserId = userId, Notes = "فاتورة مزامنة أوفلاين" });
+                            }
+                            sale.Saledetails ??= new List<Saledetails>();
+                            sale.Saledetails.Add(new Saledetails { DrugId = item.DrugId, Quantity = itemQty, UnitPrice = item.UnitPrice });
+                        }
+
+                        sale.TotalAmount = grossTotal;
+                        sale.NetAmount = grossTotal - sale.Discount + sale.TaxAmount;
+
+                        _context.Sales.Add(sale);
+                        await _context.SaveChangesAsync();
+                        newSaleId = sale.SaleId;
+
+                        decimal cashAmt = offlineData.CashAmount;
+                        decimal bankAmt = offlineData.BankAmount;
+                        decimal credit = sale.NetAmount - cashAmt - bankAmt;
+                        if (credit < 0) credit = 0;
+
+                        if (cashAmt > 0 && offlineData.CashAccountId > 0)
+                            _context.SalePayments.Add(new SalePayments { SaleId = sale.SaleId, PaymentMethod = "Cash", AccountId = offlineData.CashAccountId, Amount = cashAmt });
+                        if (bankAmt > 0 && offlineData.BankAccountId > 0)
+                            _context.SalePayments.Add(new SalePayments { SaleId = sale.SaleId, PaymentMethod = "Bank", AccountId = offlineData.BankAccountId, Amount = bankAmt });
+                        if (credit > 0)
+                            _context.SalePayments.Add(new SalePayments { SaleId = sale.SaleId, PaymentMethod = "Credit", Amount = credit });
+
+                        await _context.SaveChangesAsync();
+
+                        var payload = new AccountingPayload
+                        {
+                            TransactionType = TransactionType.SalesInvoice,
+                            BranchId = ActiveBranchId,
+                            UserId = userId,
+                            ReferenceNo = sale.SaleId.ToString(),
+                            Description = $"مبيعات POS (أوفلاين مزامنة) فاتورة #{sale.SaleId}",
+                            CustomerId = sale.CustomerId,
+                            SpecificCashAccountId = offlineData.CashAccountId > 0 ? offlineData.CashAccountId : null,
+                            SpecificBankAccountId = offlineData.BankAccountId > 0 ? offlineData.BankAccountId : null
+                        };
+                        payload.Amounts.Add(AmountSource.NetTotalAmount, sale.NetAmount);
+                        payload.Amounts.Add(AmountSource.PaidCashAmount, cashAmt);
+                        payload.Amounts.Add(AmountSource.PaidBankAmount, bankAmt);
+                        payload.Amounts.Add(AmountSource.CreditAmount, credit);
+                        payload.Amounts.Add(AmountSource.COGSAmount, totalCogs);
+                        await _accountingEngine.ProcessTransactionAsync(payload);
+
+                        await transaction.CommitAsync();
+                    }
+                    catch (Exception) { await transaction.RollbackAsync(); throw; }
+                });
+
+                await RecordLog("OfflineSync", "Sales", $"مزامنة فاتورة أوفلاين #{newSaleId}");
+                return Ok(new { success = true, saleId = newSaleId });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        // DTO لاستقبال بيانات الفاتورة الأوفلاين
+        private class OfflineSaleDto
+        {
+            public int CustomerId { get; set; }
+            public decimal Discount { get; set; }
+            public decimal TaxAmount { get; set; }
+            public decimal CashAmount { get; set; }
+            public int CashAccountId { get; set; }
+            public decimal BankAmount { get; set; }
+            public int BankAccountId { get; set; }
+            public List<OfflineSaleItemDto> Items { get; set; } = new();
+        }
+        private class OfflineSaleItemDto
+        {
+            public int DrugId { get; set; }
+            public decimal Quantity { get; set; }
+            public decimal UnitPrice { get; set; }
+        }
     }
 }

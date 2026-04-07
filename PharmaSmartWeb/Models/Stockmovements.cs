@@ -35,13 +35,13 @@ namespace PharmaSmartWeb.Models
 
         [ForeignKey(nameof(BranchId))]
         [InverseProperty(nameof(Branches.Stockmovements))]
-        public virtual Branches Branch { get; set; }
+        public virtual Branches Branch { get; set; } = null!;
         [ForeignKey(nameof(DrugId))]
         [InverseProperty(nameof(Drugs.Stockmovements))]
-        public virtual Drugs Drug { get; set; }
+        public virtual Drugs Drug { get; set; } = null!;
         [ForeignKey(nameof(UserId))]
         [InverseProperty(nameof(Users.Stockmovements))]
-        public virtual Users User { get; set; }
+        public virtual Users User { get; set; } = null!;
     }
 }
 
