@@ -9,6 +9,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using PharmaSmartWeb.Security;
 
 namespace PharmaSmartWeb.Controllers
 {
@@ -62,11 +63,19 @@ namespace PharmaSmartWeb.Controllers
                     string uniqueFileName = existingSettings?.CompanyLogoPath;
                     if (logoFile != null && logoFile.Length > 0)
                     {
+                        // ✅ الإصلاح الأمني: التحقق من نوع الملف بالـ Magic Bytes قبل الحفظ
+                        if (!FileSecurityHelper.IsValidImageFile(logoFile))
+                        {
+                            TempData["Error"] = "نوع الملف غير مسموح به. يُقبل ملفات الصور فقط (JPEG، PNG).";
+                            return RedirectToAction(nameof(Index));
+                        }
+
                         string uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "company");
                         if (!Directory.Exists(uploadsFolder))
                             Directory.CreateDirectory(uploadsFolder);
 
-                        uniqueFileName = "logo_" + DateTime.Now.ToString("yyyyMMddHHmmss") + Path.GetExtension(logoFile.FileName);
+                        // ✅ استخدام اسم ملف مُعقَّم (Sanitized) لمنع هجمات تسمم المسار
+                        uniqueFileName = "logo_" + FileSecurityHelper.SanitizeFileName(logoFile.FileName);
                         string filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
                         using (var fileStream = new FileStream(filePath, FileMode.Create))
@@ -277,6 +286,8 @@ namespace PharmaSmartWeb.Controllers
                     .Split(new[] { ";\n", ";\r\n" }, StringSplitOptions.RemoveEmptyEntries);
 
                 int executed = 0;
+                var failedStatements = new List<string>();
+
                 foreach (var stmt in statements)
                 {
                     var trimmed = stmt.Trim();
@@ -288,11 +299,20 @@ namespace PharmaSmartWeb.Controllers
                         _context.Database.ExecuteSqlRaw(trimmed);
                         executed++;
                     }
-                    catch { /* تجاهل الأخطاء الفردية وإكمال الباقي */ }
+                    catch (Exception stmtEx)
+                    {
+                        // ✅ الإصلاح: تسجيل الأخطاء بدلاً من ابتلاعها بصمت
+                        failedStatements.Add($"[أمر {executed + failedStatements.Count + 1}]: {stmtEx.Message.Substring(0, Math.Min(100, stmtEx.Message.Length))}");
+                    }
                 }
 
-                await RecordLog("Restore", "Admin", $"تم استرجاع البيانات من الملف ({sqlFile.FileName}). عدد الأوامر المنفذة: {executed}");
-                TempData["RestoreSuccess"] = $"✅ تم استرجاع البيانات بنجاح! عدد الأوامر المنفذة: {executed}";
+                string logMsg = $"استرجاع من ({sqlFile.FileName}): نجح={executed}, فشل={failedStatements.Count}";
+                await RecordLog("Restore", "Admin", logMsg);
+
+                if (failedStatements.Any())
+                    TempData["RestoreWarning"] = $"تم تنفيذ {executed} أمر بنجاح. فشل {failedStatements.Count} أمر: {string.Join(" | ", failedStatements.Take(5))}";
+
+                TempData["RestoreSuccess"] = $"✅ اكتمل الاسترجاع! أوامر ناجحة: {executed} | فاشلة: {failedStatements.Count}";
                 return RedirectToAction(nameof(Backup));
             }
             catch (Exception ex)
