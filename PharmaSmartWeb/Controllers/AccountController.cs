@@ -7,16 +7,20 @@ using System.Security.Claims;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using System.Linq;
 using System;
 
 namespace PharmaSmartWeb.Controllers
 {
-    // 🚀 يرث من BaseController للوصول لمحرك العزل وخدمة RecordLog
     public class AccountController : BaseController
     {
-        public AccountController(ApplicationDbContext context) : base(context)
+        private readonly IPasswordHasher<Users> _passwordHasher;
+
+        public AccountController(ApplicationDbContext context, IPasswordHasher<Users> passwordHasher)
+            : base(context)
         {
+            _passwordHasher = passwordHasher;
         }
 
         // ==========================================
@@ -27,20 +31,14 @@ namespace PharmaSmartWeb.Controllers
         [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
         public async Task<IActionResult> Login(string returnUrl = null)
         {
-            // مسح جلسة المستخدم الحالي فقط (وليس كل الكوكيز لتجنب مشكلة CSRF Token)
             if (User.Identity.IsAuthenticated)
             {
                 await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                // 🛑 الحل الحاسم لمشكلة الخطأ عند التبديل بين الحسابات:
-                // يجب إعادة توجيه المستخدم لنفس الصفحة بعد تسجيل الخروج لتنظيف الـ Identity تماماً 
-                // وتوليد Antiforgery Token جديد متوافق مع زائر غير مسجل (Anonymous)
                 return RedirectToAction("Login", new { returnUrl });
             }
 
-            // مسح كوكيز الفروع لضمان بيئة نظيفة للمستخدم الجديد
             Response.Cookies.Delete("ActiveBranchId");
 
-            // تنظيف الرابط من أي مخلفات أخطاء سابقة
             if (returnUrl != null && returnUrl.Contains("HandleError")) returnUrl = null;
 
             ViewData["ReturnUrl"] = returnUrl;
@@ -54,14 +52,17 @@ namespace PharmaSmartWeb.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login(string username, string password, string returnUrl = null)
         {
-            if (string.IsNullOrEmpty(username)) return View();
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                ViewBag.Error = "يرجى إدخال اسم المستخدم وكلمة المرور.";
+                return View();
+            }
 
-            // 🚀 الإجراء الوقائي: مسح المسافات الفارغة (Trim) لحل مشاكل الإدخال
             string cleanUsername = username.Trim();
 
-            // 1. التحقق من المستخدم في قاعدة البيانات
+            // ✅ الخطوة 1: جلب المستخدم بالاسم فقط — لا تُقارَن كلمة المرور في الاستعلام
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username == cleanUsername && u.PasswordHash == password);
+                .FirstOrDefaultAsync(u => u.Username == cleanUsername);
 
             if (user == null || user.IsActive == false)
             {
@@ -69,49 +70,82 @@ namespace PharmaSmartWeb.Controllers
                 return View();
             }
 
-            // 2. جلب اسم الدور واسم الفرع بشكل آمن ومنفصل لضمان استقرار الربط
+            // ✅ الخطوة 2: التحقق من كلمة المرور بأمان
+            bool passwordValid = false;
+            var verifyResult = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash ?? "", password);
+
+            if (verifyResult == PasswordVerificationResult.Success ||
+                verifyResult == PasswordVerificationResult.SuccessRehashNeeded)
+            {
+                passwordValid = true;
+                // إذا احتاج الهاش لتحديث (Rehash)، يتم تلقائياً
+                if (verifyResult == PasswordVerificationResult.SuccessRehashNeeded)
+                {
+                    user.PasswordHash = _passwordHasher.HashPassword(user, password);
+                    _context.Update(user);
+                    await _context.SaveChangesAsync();
+                }
+            }
+            else
+            {
+                // ✅ مسار الهجرة: إذا كانت كلمة المرور لا تزال نصاً صريحاً (الحسابات القديمة)،
+                // نتحقق منها مرة واحدة فقط ثم نُشفِّرها فوراً للمستقبل.
+                if (!string.IsNullOrEmpty(user.PasswordHash) && user.PasswordHash == password)
+                {
+                    user.PasswordHash = _passwordHasher.HashPassword(user, password);
+                    _context.Update(user);
+                    await _context.SaveChangesAsync();
+                    passwordValid = true;
+                }
+            }
+
+            if (!passwordValid)
+            {
+                ViewBag.Error = "اسم المستخدم أو كلمة المرور غير صحيحة، أو الحساب محظور.";
+                return View();
+            }
+
+            // جلب اسم الدور
             string roleName = "User";
             if (user.RoleId > 0)
             {
-                var role = await _context.Userroles.AsNoTracking().FirstOrDefaultAsync(r => r.RoleId == user.RoleId);
+                var role = await _context.Userroles.AsNoTracking()
+                    .FirstOrDefaultAsync(r => r.RoleId == user.RoleId);
                 roleName = role?.RoleArabicName ?? role?.RoleName ?? "User";
             }
 
+            // جلب اسم الفرع
             string branchName = "فرع غير محدد";
             if (user.DefaultBranchId > 0)
             {
-                var branch = await _context.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.BranchId == user.DefaultBranchId);
+                var branch = await _context.Branches.AsNoTracking()
+                    .FirstOrDefaultAsync(b => b.BranchId == user.DefaultBranchId);
                 branchName = branch?.BranchName ?? "فرع غير محدد";
             }
 
-            // 3. بناء الهوية البرمجية (Claims) - فقط البيانات الأساسية لتجنب تضخم الكوكي
+            // بناء Claims
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim("UserID", user.UserId.ToString()),
                 new Claim("RoleID", user.RoleId.ToString()),
                 new Claim(ClaimTypes.Role, roleName),
-                
-                // 🚀 تأسيس العزل: الفرع الافتراضي للموظف، ونقطة البداية للمدير
                 new Claim("BranchID", user.DefaultBranchId?.ToString() ?? "1"),
                 new Claim("BranchName", branchName)
             };
 
-            // 🚀 إضافة الهوية الصريحة لمدير النظام لتفادي اختفائها في الواجهات (User.IsInRole)
             if (user.RoleId == 1)
             {
                 claims.Add(new Claim(ClaimTypes.Role, "SuperAdmin"));
             }
 
-            // تم إزالة حلقة (foreach) الخاصة بـ Permissions من هنا لتخفيف حجم الـ Cookie وحل خطأ ERR_HTTP2_PROTOCOL_ERROR
-            // سيتولى كلاس (ClaimsTransformer) جلب الصلاحيات ديناميكياً في الذاكرة لاحقاً
-
-            var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var claimsIdentity = new ClaimsIdentity(
+                claims, CookieAuthenticationDefaults.AuthenticationScheme);
 
             var authProperties = new AuthenticationProperties
             {
-                IsPersistent = true, // تذكرني
-                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12) // صلاحية الجلسة
+                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(12)
             };
 
             await HttpContext.SignInAsync(
@@ -119,12 +153,12 @@ namespace PharmaSmartWeb.Controllers
                 new ClaimsPrincipal(claimsIdentity),
                 authProperties);
 
-            // 🛡️ توثيق عملية الدخول في سجلات الرقابة (عبر الموتور المورث من BaseController)
-            // نمرر ActiveBranchId الافتراضي الذي تم تأسيسه للتو
-            await RecordLog("Login", "Account", $"المستخدم {user.Username} سجل دخوله بنجاح من {branchName}.");
+            await RecordLog("Login", "Account",
+                $"المستخدم {user.Username} سجل دخوله بنجاح من {branchName}.");
 
-            // التوجيه الذكي
-            if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl) && !returnUrl.Contains("HandleError"))
+            if (!string.IsNullOrEmpty(returnUrl) &&
+                Url.IsLocalUrl(returnUrl) &&
+                !returnUrl.Contains("HandleError"))
             {
                 return Redirect(returnUrl);
             }
@@ -133,7 +167,7 @@ namespace PharmaSmartWeb.Controllers
         }
 
         // ==========================================
-        // 3. دالة تسجيل الخروج 
+        // 3. دالة تسجيل الخروج
         // ==========================================
         [HttpGet]
         [ResponseCache(Location = ResponseCacheLocation.None, NoStore = true)]
@@ -144,9 +178,7 @@ namespace PharmaSmartWeb.Controllers
                 await RecordLog("Logout", "Account", "قام المستخدم بتسجيل الخروج بنجاح.");
             }
 
-            // 🚀 العزل الأمني: تدمير كوكي "الفرع النشط" لكي لا يرثه من يستخدم الجهاز لاحقاً
             Response.Cookies.Delete("ActiveBranchId");
-
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return RedirectToAction("Login", "Account");
         }
@@ -161,10 +193,38 @@ namespace PharmaSmartWeb.Controllers
         [Authorize]
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ChangePassword(string currentPassword, string newPassword, string confirmPassword)
+        public async Task<IActionResult> ChangePassword(
+            string currentPassword, string newPassword, string confirmPassword)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == User.Identity.Name);
-            if (user == null || user.PasswordHash != currentPassword)
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Username == User.Identity.Name);
+
+            if (user == null)
+            {
+                ViewBag.Error = "لم يتم العثور على المستخدم.";
+                return View();
+            }
+
+            // ✅ التحقق من كلمة المرور الحالية باستخدام الهاش
+            bool currentPasswordValid = false;
+            var verifyResult = _passwordHasher.VerifyHashedPassword(
+                user, user.PasswordHash ?? "", currentPassword);
+
+            if (verifyResult == PasswordVerificationResult.Success ||
+                verifyResult == PasswordVerificationResult.SuccessRehashNeeded)
+            {
+                currentPasswordValid = true;
+            }
+            else
+            {
+                // مسار الهجرة للحسابات القديمة التي لم تسجّل دخولاً بعد
+                if (!string.IsNullOrEmpty(user.PasswordHash) && user.PasswordHash == currentPassword)
+                {
+                    currentPasswordValid = true;
+                }
+            }
+
+            if (!currentPasswordValid)
             {
                 ViewBag.Error = "كلمة المرور الحالية غير صحيحة!";
                 return View();
@@ -176,7 +236,8 @@ namespace PharmaSmartWeb.Controllers
                 return View();
             }
 
-            user.PasswordHash = newPassword;
+            // ✅ حفظ كلمة المرور الجديدة مُشفَّرة (Hashed)
+            user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
             _context.Update(user);
             await _context.SaveChangesAsync();
 
