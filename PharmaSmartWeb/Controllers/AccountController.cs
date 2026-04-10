@@ -252,42 +252,64 @@ namespace PharmaSmartWeb.Controllers
             if (string.IsNullOrEmpty(username)) return View();
 
             // 🚀 الإجراء الوقائي: مسح المسافات الفارغة (Trim) لحل مشاكل الإدخال
-            string cleanUsername = username.Trim();
+            string cleanUsername = username?.Trim();
 
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username == cleanUsername);
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == cleanUsername);
 
-            if (user == null || user.IsActive == false)
+            // 1. التشخيص: هل المستخدم موجود؟
+            if (user == null)
             {
-                ViewBag.Error = "اسم المستخدم أو كلمة المرور غير صحيحة، أو الحساب محظور.";
+                ViewBag.Error = "اسم المستخدم غير مسجل في النظام.";
                 return View();
             }
 
-            // 🚀 Migration Logic: plaintext → hash on first successful login; otherwise verify with IPasswordHasher.
-            // Using .Trim() here to handle legacy data that might have trailing spaces in the database.
-            string dbPwd = user.PasswordHash?.Trim();
-            string inputPwd = password?.Trim();
-
-            if (!string.IsNullOrEmpty(dbPwd) && dbPwd == inputPwd)
+            // 2. التشخيص: هل الحساب نشط؟
+            // نتعامل مع null كأنه نشط إلا إذا تم إيقافه صراحة 
+            if (user.IsActive == false)
             {
-                // Convert to hash immediately and save
-                user.PasswordHash = _passwordHasher.HashPassword(user, inputPwd);
+                ViewBag.Error = "هذا الحساب معطل حالياً، يرجى مراجعة الإدارة.";
+                return View();
+            }
+
+            // 🚀 محرك الهجرة المطور (Robust Migration Engine):
+            // نقوم بالتحقق من النص الصريح مع تجاهل حالة الأحرف والمسافات الزائدة
+            string dbPlaintext = user.PasswordHash?.Trim();
+            string inputPlaintext = password?.Trim();
+            
+            bool isLegacyMatch = !string.IsNullOrEmpty(dbPlaintext) && 
+                                 string.Equals(dbPlaintext, inputPlaintext, StringComparison.OrdinalIgnoreCase);
+
+            if (isLegacyMatch)
+            {
+                // ✅ ترقية فورية وآمنة لكلمة المرور
+                user.PasswordHash = _passwordHasher.HashPassword(user, inputPlaintext);
                 _context.Users.Update(user);
                 await _context.SaveChangesAsync();
             }
             else
             {
-                var result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
-                if (result != PasswordVerificationResult.Success && result != PasswordVerificationResult.SuccessRehashNeeded)
+                // 🔒 التحقق باستخدام خوارزمية التشفير الحديثة
+                try 
                 {
-                    ViewBag.Error = "اسم المستخدم أو كلمة المرور غير صحيحة، أو الحساب محظور.";
-                    return View();
+                    var result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
+                    if (result != PasswordVerificationResult.Success && result != PasswordVerificationResult.SuccessRehashNeeded)
+                    {
+                        ViewBag.Error = "كلمة المرور غير صحيحة.";
+                        return View();
+                    }
+                    
+                    if (result == PasswordVerificationResult.SuccessRehashNeeded)
+                    {
+                        user.PasswordHash = _passwordHasher.HashPassword(user, password);
+                        _context.Users.Update(user);
+                        await _context.SaveChangesAsync();
+                    }
                 }
-                if (result == PasswordVerificationResult.SuccessRehashNeeded)
+                catch
                 {
-                    user.PasswordHash = _passwordHasher.HashPassword(user, password);
-                    _context.Users.Update(user);
-                    await _context.SaveChangesAsync();
+                    // في حالة وجود نص قديم لا يتوافق مع صيغة الـ Hash ولم ينجح الـ Legacy Match
+                    ViewBag.Error = "بيانات الدخول غير متوافقة مع إعدادات الأمان الجديدة. يرجى التواصل مع الدعم.";
+                    return View();
                 }
             }
 
