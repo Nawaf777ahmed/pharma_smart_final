@@ -544,6 +544,26 @@
        .catch(err => console.warn('SW Error:', err));
    });
  }
+    // ════════════════════════════════════════
+    // 🛡️ Global Numeric Shield (Anti-Negative)
+    // ════════════════════════════════════════
+    document.addEventListener('input', function(e) {
+        if (e.target && e.target.type === 'number') {
+            if (e.target.value !== '' && parseFloat(e.target.value) < 0) {
+                e.target.value = 0;
+                e.target.dispatchEvent(new Event('input', { bubbles: true }));
+                e.target.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+    });
+
+    document.addEventListener('keydown', function(e) {
+        if (e.target && e.target.type === 'number') {
+            if (e.key === '-' || e.key === 'Subtract') {
+                e.preventDefault();
+            }
+        }
+    });
 </script>
 </body>
 </html>

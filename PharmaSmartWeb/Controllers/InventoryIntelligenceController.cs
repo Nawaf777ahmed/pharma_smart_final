@@ -103,10 +103,54 @@ namespace PharmaSmartWeb.Controllers
         {
             int currentBranchId = ActiveBranchId == 0 ? 1 : ActiveBranchId;
             
-            // 1. استخراج النواقص
-            var inventoryQuery = _context.Branchinventory.Include(b => b.Drug).Where(b => b.BranchId == currentBranchId).AsQueryable();
-            var rawInventory = await inventoryQuery.ToListAsync();
-            var shortages = rawInventory.Where(b => b.StockQuantity <= (b.MinimumStockLevel == 0 ? 10 : b.MinimumStockLevel)).ToList();
+            // 1. حساب حد الطلب الديناميكي بشكل كامل (Dynamic Reorder Point - DRP)
+            // المعادلة: DRP = (متوسط الاستهلاك اليومي × فترة الانتظار) + مخزون الأمان
+            // فترة الانتظار الافتراضية = 7 أيام (أسبوع لوصول الطلبية)
+            // مخزون الأمان = يتغير حسب أهمية الدواء (A=7 أيام، B=3، C=1)
+            const int LeadTimeDays = 7;
+            var ninetyDaysAgo = DateTime.Now.AddDays(-90);
+
+            // معدل المبيعات اليومي لكل دواء خلال آخر 90 يوماً
+            var salesRateByDrug = await _context.Saledetails
+                .Include(sd => sd.Sale)
+                .Where(sd => sd.Sale.BranchId == currentBranchId && sd.Sale.SaleDate >= ninetyDaysAgo)
+                .GroupBy(sd => sd.DrugId)
+                .Select(g => new { DrugId = g.Key, TotalQty = g.Sum(x => x.Quantity) })
+                .ToDictionaryAsync(x => x.DrugId, x => x.TotalQty);
+
+            var rawInventory = await _context.Branchinventory
+                .Include(b => b.Drug)
+                .Where(b => b.BranchId == currentBranchId)
+                .ToListAsync();
+
+            var shortages = rawInventory.Where(b =>
+            {
+                // أيام أمان إضافية حسب تصنيف ABC
+                int safetyDays = b.Abccategory switch
+                {
+                    "A" => 7,  // دواء A: مخزون أمان 7 أيام إضافية
+                    "B" => 3,  // دواء B: مخزون أمان 3 أيام
+                    _   => 1   // دواء C: مخزون أمان يوم واحد
+                };
+
+                if (salesRateByDrug.TryGetValue(b.DrugId, out int total90) && total90 > 0)
+                {
+                    // متوسط الاستهلاك اليومي = إجمالي 90 يوم ÷ 90
+                    double dailyAvg = (double)total90 / 90.0;
+                    // DRP = (متوسط اليومي × فترة الانتظار) + (متوسط اليومي × أيام الأمان)
+                    int drp = (int)Math.Ceiling(dailyAvg * (LeadTimeDays + safetyDays));
+                    return b.StockQuantity <= Math.Max(1, drp);
+                }
+
+                // لا توجد حركة بيع واضحة → تصنيف ABC فقط كحد أدنى
+                int abcMin = b.Abccategory switch
+                {
+                    "A" => 10,
+                    "B" => 5,
+                    _   => 2
+                };
+                return b.StockQuantity <= abcMin;
+            }).ToList();
 
             if (!shortages.Any())
                 return BadRequest("لا توجد نواقص في المخزون الحالي لتوليد الخطة.");
@@ -317,10 +361,45 @@ namespace PharmaSmartWeb.Controllers
 
             int currentBranchId = ReportScopeId > 0 ? ReportScopeId : 1;
 
-            var shortages = await _context.Branchinventory
+            const int ExcelLeadTimeDays = 7;
+            var excel90DaysAgo = DateTime.Now.AddDays(-90);
+
+            var excelSalesRate = await _context.Saledetails
+                .Include(sd => sd.Sale)
+                .Where(sd => sd.Sale.BranchId == currentBranchId && sd.Sale.SaleDate >= excel90DaysAgo)
+                .GroupBy(sd => sd.DrugId)
+                .Select(g => new { DrugId = g.Key, TotalQty = g.Sum(x => x.Quantity) })
+                .ToDictionaryAsync(x => x.DrugId, x => x.TotalQty);
+
+            var rawExcelInventory = await _context.Branchinventory
                 .Include(i => i.Drug)
-                .Where(i => i.BranchId == currentBranchId && i.StockQuantity <= i.MinimumStockLevel)
+                .Where(i => i.BranchId == currentBranchId)
                 .ToListAsync();
+
+            var shortages = rawExcelInventory.Where(b =>
+            {
+                int safetyDays = b.Abccategory switch
+                {
+                    "A" => 7,
+                    "B" => 3,
+                    _   => 1
+                };
+
+                if (excelSalesRate.TryGetValue(b.DrugId, out int total90) && total90 > 0)
+                {
+                    double dailyAvg = (double)total90 / 90.0;
+                    int drp = (int)Math.Ceiling(dailyAvg * (ExcelLeadTimeDays + safetyDays));
+                    return b.StockQuantity <= Math.Max(1, drp);
+                }
+
+                int abcMin = b.Abccategory switch
+                {
+                    "A" => 10,
+                    "B" => 5,
+                    _   => 2
+                };
+                return b.StockQuantity <= abcMin;
+            }).ToList();
 
             if (!shortages.Any())
                 return BadRequest("لا توجد نواقص في المخزون الحالي لتوليد الخطة.");
