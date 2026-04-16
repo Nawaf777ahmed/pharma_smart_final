@@ -58,23 +58,17 @@ else
                 badgeBg = "#fff1f2"; badgeColor = "#e11d48"; badgeLabel = "وصول كامل";
                 description = "مدير النظام الرئيسي. يتمتع بكافة الصلاحيات لإدارة المستخدمين، الإعدادات العامة، والبيانات.";
             }
-            else if (roleNameEn.Contains("pharmacist") || roleNameEn.Contains("صيدل"))
+            else if (roleNameEn.Contains("branchmanager") || role.RoleId == 2)
+            {
+                icon = "storefront"; iconBg = "#f3e8ff"; iconColor = "#9333ea";
+                badgeBg = "#f3e8ff"; badgeColor = "#9333ea"; badgeLabel = "إدارة فروع";
+                description = "مدير الفرع. يمتلك صلاحيات لإدارة فرعه ومراقبة أدائه التشغيلي وصلاحيات الموظفين فيه.";
+            }
+            else if (roleNameEn.Contains("pharmacist") || role.RoleId == 3)
             {
                 icon = "prescriptions"; iconBg = "#eff6ff"; iconColor = "#1d4ed8";
-                badgeBg = "#eff6ff"; badgeColor = "#1d4ed8"; badgeLabel = "طاقم طبي";
-                description = "إدارة المخزون الدوائي، صرف الوصفات الطبية، متابعة تواريخ الانتهاء، وإصدار المبيعات.";
-            }
-            else if (roleNameEn.Contains("cashier") || roleNameEn.Contains("صندوق"))
-            {
-                icon = "payments"; iconBg = "#f0fdf4"; iconColor = "#059669";
-                badgeBg = "#f0fdf4"; badgeColor = "#059669"; badgeLabel = "نقاط البيع";
-                description = "إدارة عمليات الدفع النقدي والبطاقات، إصدار الفواتير، وإغلاق الوردية المالية اليومية.";
-            }
-            else if (roleNameEn.Contains("accountant") || roleNameEn.Contains("محاسب"))
-            {
-                icon = "account_balance_wallet"; iconBg = "#fffbeb"; iconColor = "#d97706";
-                badgeBg = "#fffbeb"; badgeColor = "#d97706"; badgeLabel = "الإدارة المالية";
-                description = "الوصول للقيود المحاسبية، كشوف الحساب، ومتابعة مديونيات الشركات والموردين.";
+                badgeBg = "#eff6ff"; badgeColor = "#1d4ed8"; badgeLabel = "طاقم طبي ومبيعات";
+                description = "إدارة المخزون الدوائي، صرف الوصفات الطبية، وإدارة نقاط البيع النقدية.";
             }
 
             <div class="role-card">

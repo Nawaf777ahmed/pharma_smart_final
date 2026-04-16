@@ -1,4 +1,4 @@
-﻿namespace PharmaSmartWeb.Models
+namespace PharmaSmartWeb.Models
 {
     /// <summary>
     /// ╪د┘┘à╪▒╪ش╪╣ ╪د┘┘à╪▒┘â╪▓┘è (Single Source of Truth) ┘┘â╪د┘╪ر ╪د┘╪س┘ê╪د╪ذ╪ز ┘┘è ╪د┘┘╪╕╪د┘à.
@@ -7,8 +7,7 @@
     public enum SystemRoles
     {
         SuperAdmin = 1,
-        Admin = 2,
-        Pharmacist = 3,
-        Accountant = 4
+        BranchManager = 2,
+        PharmacistCashier = 3
     }
 }
