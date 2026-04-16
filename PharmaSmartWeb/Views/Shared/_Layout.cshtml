@@ -175,16 +175,8 @@
  }
  </nav>
 
- <!-- Always Visible Quick POS Button at bottom of sidebar -->
+ <!-- Dynamic Action Buttons at bottom of sidebar -->
  <div class="mt-4 pt-4 border-t border-slate-200 flex flex-col gap-3">
- @if (User.HasClaim("Permission", "Sales.Add") || User.IsInRole("SuperAdmin") || User.IsInRole("Cashier") || User.IsInRole("Pharmacist"))
- {
-  <a href="/Sales/Create" class="w-full py-3 bg-emerald-600 text-white rounded-sm font-bold flex items-center justify-center gap-2 hover:opacity-90 shadow-sm transition-transform active:scale-95">
-   <span class="material-symbols-outlined">point_of_sale</span> نقطة بيع سريعة
-  </a>
- }
- <div class="border-t border-slate-100 my-1"></div>
- <!-- Contextual Action Button based on Module -->
  @{
     string activeUnit = "Commercial"; 
     if (new[] { "Report", "InventoryIntelligence" }.Contains(currentController)) activeUnit = "Reports";
@@ -192,8 +184,16 @@
     else if (new[] { "Journal", "ChartOfAccounts", "Vouchers", "FinancialSettings" }.Contains(currentController)) activeUnit = "Finance";
     else if (new[] { "Admin", "Users", "Roles", "Branches", "Account" }.Contains(currentController)) activeUnit = "SystemSettings";
  }
+ 
   @if(activeUnit == "Commercial")
   {
+     if (User.HasClaim("Permission", "Sales.Add") || User.IsInRole("SuperAdmin") || User.IsInRole("Cashier") || User.IsInRole("Pharmacist"))
+     {
+      <a href="/Sales/Create" class="w-full py-3 bg-emerald-600 text-white rounded-sm font-bold flex items-center justify-center gap-2 hover:opacity-90 shadow-sm transition-transform active:scale-95">
+       <span class="material-symbols-outlined">point_of_sale</span> نقطة بيع سريعة
+      </a>
+      <div class="border-t border-slate-100 my-1"></div>
+     }
   <a href="/Home/CommercialHub" class="w-full py-3 bg-[#063955] text-white rounded-sm font-bold flex items-center justify-center gap-2 hover:opacity-90 shadow-sm transition-transform active:scale-95">
   <span class="material-symbols-outlined" data-icon="dashboard">dashboard</span> لوحة التجارية
   </a>
@@ -216,7 +216,7 @@
  <span class="material-symbols-outlined">admin_panel_settings</span> لوحة الإدارة
  </a>
  }
- else
+ else if (activeUnit != "Commercial")
  {
  <a href="/Home/DashboardHub" class="w-full py-3 bg-surface-container-high text-primary rounded-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-colors">
  <span class="material-symbols-outlined">dashboard</span> لوحة النظام
