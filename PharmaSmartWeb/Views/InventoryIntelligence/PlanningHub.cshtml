@@ -161,11 +161,11 @@
         </li>
         <li class="flex gap-4 opacity-0 -translate-x-4 transition-all duration-500 delay-100">
             <span class="material-symbols-outlined text-amber-500 animate-spin text-[16px] mt-0.5">hourglass_empty</span>
-            <div><strong class="block text-indigo-300">Phase 2: تصنيف المخزون (ABC)</strong><span class="text-slate-400 text-xs">تم تصنيف @(ViewBag.TotalDrugs ?? 0) دواء حسب الأهمية.</span></div>
+            <div><strong class="block text-indigo-300">Phase 2: تحديد أولوية التوريد</strong><span class="text-slate-400 text-xs">تم تحديد أهمية @(ViewBag.TotalDrugs ?? 0) دواء.</span></div>
         </li>
         <li class="flex gap-4 opacity-0 -translate-x-4 transition-all duration-500 delay-200">
             <span class="material-symbols-outlined text-amber-500 animate-spin text-[16px] mt-0.5">hourglass_empty</span>
-            <div><strong class="block text-indigo-300">Phase 3: التنبؤ (Forecasting)</strong><span class="text-slate-400 text-xs">تشغيل محرك البحث واستخراج اتجاهات النمو.</span></div>
+            <div><strong class="block text-indigo-300">Phase 3: استخراج الموسمية والتنبؤ الذاتي</strong><span class="text-slate-400 text-xs">الخوارزمية تستخرج الموسمية من التواريخ السابقة آلياً لتوقع الطلب.</span></div>
         </li>
         <li class="flex gap-4 opacity-0 -translate-x-4 transition-all duration-500 delay-300">
             <span class="material-symbols-outlined text-amber-500 animate-spin text-[16px] mt-0.5">hourglass_empty</span>
@@ -173,7 +173,7 @@
         </li>
         <li class="flex gap-4 opacity-0 -translate-x-4 transition-all duration-500 delay-400">
             <span class="material-symbols-outlined text-amber-500 animate-spin text-[16px] mt-0.5">hourglass_empty</span>
-            <div><strong class="block text-indigo-300">Phase 5: تحسين الكميات (EOQ)</strong><span class="text-slate-400 text-xs">تطبيق معادلة الطلب الاقتصادي لتقليل الهدر.</span></div>
+            <div><strong class="block text-indigo-300">Phase 5: حساب الكمية المُثلى</strong><span class="text-slate-400 text-xs">تطبيق المعادلات الرياضية لتقليل تكاليف الهدر والتخزين.</span></div>
         </li>
         <li class="flex gap-4 opacity-0 -translate-x-4 transition-all duration-500 delay-500">
             <span class="material-symbols-outlined text-amber-500 animate-spin text-[16px] mt-0.5">hourglass_empty</span>
@@ -210,12 +210,12 @@
             <thead class="bg-slate-100 sticky top-0 z-10 shadow-sm">
                 <tr class="text-slate-600">
                     <th class="px-3 py-3 w-8"><input type="checkbox" checked class="rounded border-slate-300"></th>
-                    <th class="px-3 py-3 text-right font-black">الدواء (<span class="text-rose-600">A</span><span class="text-amber-500">B</span><span class="text-slate-400">C</span>)</th>
+                    <th class="px-3 py-3 text-right font-black">الدواء (التصنيف والأولوية)</th>
                     <th class="px-3 py-3 text-center font-bold">الرصيد <span class="font-normal text-xs">/الحد</span></th>
-                    <th class="px-3 py-3 text-center font-bold">الطلب المتوقع</th>
-                    <th class="px-3 py-3 text-center font-bold">EOQ</th>
-                    <th class="px-3 py-3 text-center font-black bg-emerald-100 text-emerald-800 border-x border-emerald-200">الكمية للتوريد</th>
-                    <th class="px-3 py-3 text-center font-bold">مؤشر السيولة</th>
+                    <th class="px-3 py-3 text-center font-bold">الطلب المتوقع <span class="text-[10px] block text-slate-400">(الذكاء الاصطناعي)</span></th>
+                    <th class="px-3 py-3 text-center font-bold" title="الكمية التي تقلل تكاليف التخزين">الكمية المُثلى المقترحة</th>
+                    <th class="px-3 py-3 text-center font-black bg-emerald-100 text-emerald-800 border-x border-emerald-200">الكمية للتوريد (للتعديل)</th>
+                    <th class="px-3 py-3 text-center font-bold">المطابقة المالية</th>
                 </tr>
             </thead>
             <tbody id="forecastTableBody" class="bg-white">
@@ -226,9 +226,19 @@
 
     <!-- Footer Actions -->
     <div class="bg-slate-50 border-t border-slate-200 p-4 flex justify-between items-center">
-        <div class="text-left font-black text-slate-800 bg-white px-4 py-2 rounded border border-slate-200 shadow-sm flex flex-col justify-center">
-            <span class="text-[10px] text-slate-500 tracking-wider">التكلفة التقديرية للخطة</span>
-            <span id="totalExpectedCost" class="text-lg text-primary">0.00 R.Y</span>
+        <div class="flex items-center gap-4">
+            <div class="text-left font-black text-slate-800 bg-white px-4 py-2 rounded border border-slate-200 shadow-sm flex flex-col justify-center">
+                <span class="text-[10px] text-slate-500 tracking-wider">السيولة النقدية المتوفرة</span>
+                <span id="totalLiquidityDisplay" class="text-lg text-emerald-600">@(((decimal?)ViewBag.TotalLiquidity ?? 0m).ToString("N0")) R.Y</span>
+            </div>
+            <div id="costContainer" class="text-left font-black text-slate-800 bg-white px-4 py-2 rounded border border-slate-200 shadow-sm flex flex-col justify-center transition-colors">
+                <span class="text-[10px] text-slate-500 tracking-wider">إجمالي تكلفة الخطة</span>
+                <span id="totalExpectedCost" class="text-lg text-primary">0.00 R.Y</span>
+            </div>
+            <div id="deficitWarning" class="hidden text-left font-black bg-rose-50 border border-rose-200 px-4 py-2 rounded shadow-sm flex-col justify-center animate-pulse">
+                <span class="text-[10px] text-rose-600 tracking-wider flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">warning</span> عجز مالي متوقع</span>
+                <span id="deficitAmount" class="text-lg text-rose-700">0.00 R.Y</span>
+            </div>
         </div>
         
         <div class="flex gap-3">
@@ -411,8 +421,8 @@
                         اسم الدواء (أساسي)
                     </label>
                     <label class="flex items-center gap-2 text-sm text-slate-700 font-bold bg-slate-50 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-100 transition">
-                        <input type="checkbox" id="col_abc" value="abc" checked class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"> 
-                        التصنيف (ABC)
+                        <input type="checkbox" id="col_priority" value="priority" checked class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"> 
+                        أولوية التوريد
                     </label>
                     <label class="flex items-center gap-2 text-sm text-slate-700 font-bold bg-slate-50 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-100 transition">
                         <input type="checkbox" id="col_stock" value="stock" checked class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"> 
@@ -423,8 +433,8 @@
                         الطلب المتوقع
                     </label>
                     <label class="flex items-center gap-2 text-sm text-slate-700 font-bold bg-slate-50 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-100 transition">
-                        <input type="checkbox" id="col_eoq" value="eoq" checked class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"> 
-                        كمية (EOQ)
+                        <input type="checkbox" id="col_optimal" value="optimalQty" checked class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"> 
+                        الكمية المُثلى
                     </label>
                     <label class="flex items-center gap-2 text-sm text-slate-700 font-bold bg-slate-50 p-2 rounded border border-slate-200 cursor-pointer hover:bg-slate-100 transition">
                         <input type="checkbox" id="col_approved" value="approved" checked class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"> 

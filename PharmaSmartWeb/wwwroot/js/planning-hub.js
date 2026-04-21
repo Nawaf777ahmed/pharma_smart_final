@@ -247,41 +247,63 @@ function renderDraftGrid() {
     tbody.innerHTML = '';
     appState.totalExpectedCost = 0;
 
+    // Get Total Liquidity from DOM safely
+    const liquidityEl = document.getElementById('totalLiquidityDisplay');
+    const totalLiquidity = liquidityEl ? parseFloat(liquidityEl.innerText.replace(/[^0-9.]/g, '')) || 0 : 0;
+
     appState.forecastData.forEach((item, idx) => {
         // Safety switch effect (vital drugs A items)
-        const isVital = item.abc === 'A';
+        // Note: isLifeSaving and priority come from the backend now
+        const isVital = item.isLifeSaving || item.priority === 'قصوى';
         let finalApproved = item.approved;
         let isBoosted = false;
 
         if (appState.safetySwitch && isVital) {
-            finalApproved = Math.round(item.approved * 1.5);
+            finalApproved = Math.round(item.optimalQty * 1.5);
             isBoosted = true;
         } else if (!appState.safetySwitch && isVital) {
-            finalApproved = item.proposed;
+            finalApproved = item.optimalQty;
         }
         
         let finalCost = finalApproved * item.unitCost;
+        
+        // Determine Financial Match dynamically for each row
+        const cumulativeCost = appState.totalExpectedCost + finalCost;
+        let financialStatus = "";
+        let statusBadgeClass = "";
+        
+        if (finalApproved === 0) {
+            financialStatus = "مخزون كافٍ";
+            statusBadgeClass = "bg-slate-200 text-slate-700";
+        } else if (cumulativeCost <= totalLiquidity) {
+            financialStatus = "في حدود الميزانية";
+            statusBadgeClass = "bg-emerald-100 text-emerald-800 border-emerald-200 border";
+        } else {
+            financialStatus = "عجز مالي - مؤجل";
+            statusBadgeClass = "bg-rose-100 text-rose-800 border-rose-200 border";
+        }
+
         appState.totalExpectedCost += finalCost;
 
         const tr = document.createElement('tr');
         tr.className = `border-t transition-colors hover:bg-slate-50 ${isBoosted ? 'bg-rose-50/30' : ''}`;
         
-        // ABC Badges
-        let abcBadge = '';
-        if(item.abc === 'A') abcBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700">A</span>';
-        else if(item.abc === 'B') abcBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-700">B</span>';
-        else abcBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-slate-200 text-slate-700">C</span>';
+        // Priority Badges
+        let priorityBadge = '';
+        if(item.priority === 'قصوى') priorityBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700">أولوية قصوى</span>';
+        else if(item.priority === 'متوسطة') priorityBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-700">أولوية متوسطة</span>';
+        else priorityBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-slate-200 text-slate-700">عادية</span>';
 
         tr.innerHTML = `
             <td class="px-3 py-3 w-8"><input type="checkbox" checked class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"></td>
             <td class="px-3 py-3 font-bold text-slate-800 flex items-center gap-2">
-                ${abcBadge}
+                ${priorityBadge}
                 ${item.drug}
-                ${isBoosted ? '<span class="text-rose-500" title="تم المضاعفة لقاطع الأمان"><span class="material-symbols-outlined text-[14px]">favorite</span></span>' : ''}
+                ${isBoosted ? '<span class="text-rose-500" title="تم المضاعفة لقاطع الأمان"><span class="material-symbols-outlined text-[14px]">health_and_safety</span></span>' : ''}
             </td>
-            <td class="px-3 py-2 text-center text-slate-500 font-bold">${item.stock} <span class="text-xs font-normal">/ ${item.minStock}</span></td>
-            <td class="px-3 py-2 text-center font-bold text-amber-600">${item.expectedQty} <span class="text-xs font-normal">/شهر</span></td>
-            <td class="px-3 py-2 text-center text-slate-500">${item.eoq}</td>
+            <td class="px-3 py-2 text-center text-slate-500 font-bold">${item.stock} <span class="text-xs font-normal">/ ${item.minStock}</span> <span class="text-[9px]">${item.unit}</span></td>
+            <td class="px-3 py-2 text-center font-bold text-amber-600">${item.expectedQty} <span class="text-[9px] text-slate-400">/شهر</span></td>
+            <td class="px-3 py-2 text-center text-slate-500 font-bold">${item.optimalQty}</td>
             <td class="px-3 py-2 text-center bg-emerald-50/50 relative">
                 <input type="number" 
                        value="${finalApproved}" 
@@ -292,19 +314,36 @@ function renderDraftGrid() {
                 <div class="text-[10px] text-slate-400 mt-1">${formatCurrency(finalCost)}</div>
             </td>
             <td class="px-3 py-2 text-center">
-                <div class="w-full bg-slate-200 rounded-full h-2 mt-2">
-                    <div class="h-2 rounded-full ${item.statusClass === 'error' ? 'bg-red-500' : (item.statusClass === 'ok' ? 'bg-emerald-500' : 'bg-slate-400')}" style="width: 100%"></div>
-                </div>
-                <div class="text-[10px] text-slate-500 mt-1">${item.status}</div>
+                <span class="px-2 py-1 rounded text-[10px] font-bold ${statusBadgeClass}">${financialStatus}</span>
             </td>
         `;
         tbody.appendChild(tr);
     });
 
-    // Update Bottom Summary
+    // Update Bottom Summary and Deficit warning
     const costDisplay = document.getElementById('totalExpectedCost');
+    const costContainer = document.getElementById('costContainer');
+    const deficitWarning = document.getElementById('deficitWarning');
+    const deficitAmount = document.getElementById('deficitAmount');
+    
     if (costDisplay) {
         costDisplay.innerHTML = formatCurrency(appState.totalExpectedCost);
+        
+        if (appState.totalExpectedCost > totalLiquidity) {
+            costContainer.classList.replace('text-slate-800', 'text-rose-800');
+            costDisplay.classList.replace('text-primary', 'text-rose-600');
+            if(deficitWarning && deficitAmount) {
+                deficitWarning.classList.replace('hidden', 'flex');
+                deficitAmount.innerHTML = formatCurrency(appState.totalExpectedCost - totalLiquidity);
+            }
+        } else {
+            costContainer.classList.replace('text-rose-800', 'text-slate-800');
+            costDisplay.classList.replace('text-rose-600', 'text-primary');
+            if(deficitWarning) {
+                deficitWarning.classList.replace('flex', 'hidden');
+            }
+        }
+        
         costDisplay.classList.add('animate-pulse');
         setTimeout(() => costDisplay.classList.remove('animate-pulse'), 500);
     }
@@ -637,10 +676,10 @@ window.generateCustomPdf = function() {
 
     // استخراج الأعمدة المحددة
     const cols = {
-        abc: document.getElementById('col_abc').checked,
+        priority: document.getElementById('col_priority').checked,
         stock: document.getElementById('col_stock').checked,
         expected: document.getElementById('col_expected').checked,
-        eoq: document.getElementById('col_eoq').checked,
+        optimalQty: document.getElementById('col_optimal').checked,
         approved: document.getElementById('col_approved').checked,
         cost: document.getElementById('col_cost').checked,
         status: document.getElementById('col_status').checked
@@ -710,13 +749,13 @@ window.generateCustomPdf = function() {
                 <th>اسم الدواء</th>`;
 
     // Headers
-    if (cols.abc) html += `<th class="text-center">التصنيف (ABC)</th>`;
+    if (cols.priority) html += `<th class="text-center">أولوية التوريد</th>`;
     if (cols.stock) html += `<th class="text-center">الرصيد / الحد</th>`;
     if (cols.expected) html += `<th class="text-center">الطلب المتوقع</th>`;
-    if (cols.eoq) html += `<th class="text-center">كمية (EOQ)</th>`;
+    if (cols.optimalQty) html += `<th class="text-center">الكمية المُثلى</th>`;
     if (cols.approved) html += `<th class="text-center approved-col">الكمية للتوريد</th>`;
     if (cols.cost) html += `<th class="text-center">التكلفة الإجمالية</th>`;
-    if (cols.status) html += `<th class="text-center">الحالة</th>`;
+    if (cols.status) html += `<th class="text-center">المطابقة المالية</th>`;
 
     html += `</tr>
         </thead>
@@ -725,23 +764,19 @@ window.generateCustomPdf = function() {
     // Data Rows
     let totalCostAccumulator = 0;
     appState.forecastData.forEach((item, index) => {
-        // Read the actual adjusted quantity from DOM if it exists, else fallback to item.approved
-        const inpt = document.getElementById(`approved_${item.drugId}`);
-        const approvedQty = inpt ? parseFloat(inpt.value) : item.approved;
-        const validQty = isNaN(approvedQty) ? 0 : approvedQty;
-        
-        const cost = validQty * parseFloat(item.unitCost || 0);
+        const approvedQty = item.approved || 0;
+        const cost = approvedQty * parseFloat(item.unitCost || 0);
         totalCostAccumulator += cost;
 
         html += `<tr>
             <td class="text-center">${index + 1}</td>
             <td class="font-bold">${item.drug}</td>`;
             
-        if (cols.abc) html += `<td class="text-center font-bold">${item.abc || '-'}</td>`;
+        if (cols.priority) html += `<td class="text-center font-bold">${item.priority || '-'}</td>`;
         if (cols.stock) html += `<td class="text-center">${item.stock} / ${item.minStock}</td>`;
         if (cols.expected) html += `<td class="text-center">${item.expectedQty}</td>`;
-        if (cols.eoq) html += `<td class="text-center">${item.eoq}</td>`;
-        if (cols.approved) html += `<td class="text-center approved-col">${validQty}</td>`;
+        if (cols.optimalQty) html += `<td class="text-center">${item.optimalQty}</td>`;
+        if (cols.approved) html += `<td class="text-center approved-col">${approvedQty}</td>`;
         if (cols.cost) html += `<td class="text-center">${cost.toLocaleString()} R.Y</td>`;
         if (cols.status) html += `<td class="text-center">${item.status}</td>`;
 
@@ -752,7 +787,7 @@ window.generateCustomPdf = function() {
     html += `</tbody>
         <tfoot>
             <tr>
-                <td colspan="${2 + (cols.abc?1:0) + (cols.stock?1:0) + (cols.expected?1:0) + (cols.eoq?1:0)}" style="text-align: left; font-weight: bold; background: #f8fafc; border: none; border-bottom: 1px solid #cbd5e1; padding-left: 15px;">الإجمالي التقديري للتكلفة:</td>`;
+                <td colspan="${2 + (cols.priority?1:0) + (cols.stock?1:0) + (cols.expected?1:0) + (cols.optimalQty?1:0)}" style="text-align: left; font-weight: bold; background: #f8fafc; border: none; border-bottom: 1px solid #cbd5e1; padding-left: 15px;">الإجمالي التقديري للتكلفة:</td>`;
                 
     if (cols.approved) html += `<td class="text-center border-t border-slate-300 border-x"></td>`; // Empty under approved
     if (cols.cost) html += `<td class="text-center font-bold" style="background:#f1f5f9; color:#0f172a;">${totalCostAccumulator.toLocaleString()} R.Y</td>`;
