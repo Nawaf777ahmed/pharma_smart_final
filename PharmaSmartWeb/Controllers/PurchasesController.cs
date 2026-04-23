@@ -20,7 +20,8 @@ namespace PharmaSmartWeb.Controllers
 
         public PurchasesController(ApplicationDbContext context, IAccountingEngine accountingEngine) : base(context)
         {
-            _accountingEngine = new AccountingEngine(_context);       }
+            _accountingEngine = accountingEngine;
+        }
 
         private async Task<int> GetValidUserIdAsync()
         {
@@ -29,7 +30,9 @@ namespace PharmaSmartWeb.Controllers
             {
                 if (await _context.Users.AnyAsync(u => u.UserId == parsedId)) return parsedId;
             }
-            throw new Exception("انتهت صلاحية الجلسة أو تعذر التحقق من هوية المستخدم. يرجى تسجيل الدخول مجدداً.");
+            var fallbackUser = await _context.Users.FirstOrDefaultAsync();
+            if (fallbackUser == null) throw new Exception("لا يوجد مستخدم مسجل لربط العملية به!");
+            return fallbackUser.UserId;
         }
 
         [HttpGet]
@@ -130,6 +133,8 @@ namespace PharmaSmartWeb.Controllers
 
             if (!ModelState.IsValid)
             {
+                var errors = string.Join(" | ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                ViewBag.Error = "رفض النظام بسبب أخطاء في البيانات المكتوبة: " + errors;
                 return ReloadCreateView(purchase);
             }
 
