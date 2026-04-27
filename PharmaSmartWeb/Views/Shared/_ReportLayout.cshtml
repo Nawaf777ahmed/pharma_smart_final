@@ -372,16 +372,24 @@
     </div>
 
     <script>
-        window.addEventListener('load', function() {
+        // 🚀 تحسين سرعة الاختفاء: لا ننتظر الصور الكبيرة، نكتفي بجاهزية هيكل البيانات
+        document.addEventListener('DOMContentLoaded', function() {
+            hidePharmaPreloader();
+        });
+
+        // 🛡️ مؤقت أمان: إذا تأخر التحميل لأي سبب، تختفي الشاشة تلقائياً بعد ثانية ونصف
+        setTimeout(hidePharmaPreloader, 1500);
+
+        function hidePharmaPreloader() {
             var preloader = document.getElementById('preloader');
-            if (preloader) {
+            if (preloader && preloader.style.display !== 'none') {
                 preloader.style.opacity = '0';
                 setTimeout(function() {
                     preloader.style.visibility = 'hidden';
                     preloader.style.display = 'none';
-                }, 600);
+                }, 400);
             }
-        });
+        }
     </script>
 
 <!-- ===== FILTER BAR (screen only, outside page) ===== -->

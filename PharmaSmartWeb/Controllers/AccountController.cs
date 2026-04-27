@@ -201,6 +201,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using System.Linq;
 using System;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace PharmaSmartWeb.Controllers
 {
@@ -208,10 +209,21 @@ namespace PharmaSmartWeb.Controllers
     public class AccountController : BaseController
     {
         private readonly IPasswordHasher<Users> _passwordHasher;
+        private readonly IMemoryCache _cache;
+        private readonly PharmaSmartWeb.Services.IWhatsAppService _whatsappService;
+        private readonly IConfiguration _configuration;
 
-        public AccountController(ApplicationDbContext context, IPasswordHasher<Users> passwordHasher) : base(context)
+        public AccountController(
+            ApplicationDbContext context, 
+            IPasswordHasher<Users> passwordHasher,
+            IMemoryCache cache,
+            PharmaSmartWeb.Services.IWhatsAppService whatsappService,
+            IConfiguration configuration) : base(context)
         {
             _passwordHasher = passwordHasher;
+            _cache = cache;
+            _whatsappService = whatsappService;
+            _configuration = configuration;
         }
 
         // ==========================================
@@ -486,6 +498,131 @@ namespace PharmaSmartWeb.Controllers
                 await _context.SaveChangesAsync();
             }
             catch { }
+        }
+        // ==========================================
+        // 5. استعادة كلمة المرور (Forgot Password)
+        // ==========================================
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult ForgotPassword() => View();
+
+        [HttpPost]
+        [AllowAnonymous]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ForgotPassword(string username)
+        {
+            if (string.IsNullOrEmpty(username)) return View();
+
+            var user = await _context.Users
+                .Include(u => u.Employee)
+                .FirstOrDefaultAsync(u => u.Username == username.Trim());
+
+            if (user == null || user.IsActive == false || user.Employee == null || string.IsNullOrEmpty(user.Employee.Phone))
+            {
+                ViewBag.Error = "تعذر إرسال الرمز. تأكد من صحة اسم المستخدم وأن حسابك مرتبط بموظف لديه رقم هاتف مسجل.";
+                return View();
+            }
+
+            // توليد رمز OTP
+            string otp = new Random().Next(100000, 999999).ToString();
+            
+            // حفظ في الكاش لمدة 10 دقائق
+            _cache.Set($"OTP_{user.Username}", otp, TimeSpan.FromMinutes(10));
+
+            // محاولة إرسال عبر الواتساب
+            var instanceId = _configuration["WhatsApp:InstanceId"];
+            var token      = _configuration["WhatsApp:Token"];
+            bool whatsAppConfigured = !string.IsNullOrEmpty(instanceId) && !string.IsNullOrEmpty(token);
+
+            if (whatsAppConfigured)
+            {
+                string msg = $"مرحباً {user.Employee.FullName}،\nرمز استعادة كلمة المرور الخاص بك في نظام PharmaSmart هو: *{otp}*\n(الرمز صالح لمدة 10 دقائق).";
+                await _whatsappService.SendMessageAsync(user.Employee.Phone, msg);
+            }
+            else
+            {
+                // وضع الاختبار: عرض الرمز مباشرة على الشاشة (يُستخدم عند غياب إعدادات الواتساب)
+                TempData["DevOtp"] = otp;
+            }
+
+            TempData["ResetUsername"] = user.Username;
+            return RedirectToAction(nameof(VerifyOTP));
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult VerifyOTP()
+        {
+            if (TempData["ResetUsername"] == null) return RedirectToAction(nameof(Login));
+            ViewBag.Username = TempData.Peek("ResetUsername");
+            return View();
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        [ValidateAntiForgeryToken]
+        public IActionResult VerifyOTP(string otpCode)
+        {
+            string? username = TempData.Peek("ResetUsername")?.ToString();
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(otpCode)) return RedirectToAction(nameof(Login));
+
+            if (_cache.TryGetValue($"OTP_{username}", out string? savedOtp))
+            {
+                if (savedOtp == otpCode.Trim())
+                {
+                    TempData["OTPVerified"] = true;
+                    TempData.Keep("ResetUsername");
+                    return RedirectToAction(nameof(ResetPassword));
+                }
+            }
+
+            ViewBag.Error = "الرمز المدخل غير صحيح أو انتهت صلاحيته.";
+            ViewBag.Username = username;
+            return View();
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult ResetPassword()
+        {
+            if (TempData.Peek("ResetUsername") == null || TempData.Peek("OTPVerified") == null) 
+                return RedirectToAction(nameof(Login));
+            
+            ViewBag.Username = TempData.Peek("ResetUsername");
+            return View();
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResetPassword(string newPassword, string confirmPassword)
+        {
+            string? username = TempData["ResetUsername"]?.ToString();
+            if (string.IsNullOrEmpty(username)) return RedirectToAction(nameof(Login));
+
+            if (string.IsNullOrEmpty(newPassword) || newPassword != confirmPassword)
+            {
+                TempData.Keep("ResetUsername");
+                TempData.Keep("OTPVerified");
+                ViewBag.Error = "كلمة المرور غير متطابقة أو فارغة.";
+                ViewBag.Username = username;
+                return View();
+            }
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
+            if (user != null)
+            {
+                user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
+                _context.Users.Update(user);
+                await _context.SaveChangesAsync();
+                
+                // مسح الـ OTP من الكاش
+                _cache.Remove($"OTP_{username}");
+                
+                TempData["SuccessMessage"] = "تم إعادة تعيين كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول.";
+            }
+
+            return RedirectToAction(nameof(Login));
         }
     }
 }

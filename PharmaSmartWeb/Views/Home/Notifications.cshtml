@@ -13,7 +13,7 @@
 
     <!-- KPI Summary -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div class="bg-white border border-slate-200 rounded-sm p-4 flex items-center gap-3 shadow-sm">
+        <div onclick="filterBySeverity('all')" id="sev-all" class="severity-card cursor-pointer bg-white border border-slate-200 rounded-sm p-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-all ring-2 ring-offset-2 ring-slate-400">
             <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
                 <span class="material-symbols-outlined text-slate-500 text-[22px]">notifications</span>
             </div>
@@ -22,7 +22,7 @@
                 <p class="text-2xl font-black text-slate-800">@total</p>
             </div>
         </div>
-        <div class="bg-white border border-red-200 border-r-4 border-r-red-500 rounded-sm p-4 flex items-center gap-3 shadow-sm">
+        <div onclick="filterBySeverity('critical')" id="sev-critical" class="severity-card cursor-pointer bg-white border border-red-200 border-r-4 border-r-red-500 rounded-sm p-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-all ring-transparent">
             <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
                 <span class="material-symbols-outlined text-red-500 text-[22px]">dangerous</span>
             </div>
@@ -31,7 +31,7 @@
                 <p class="text-2xl font-black text-red-600">@critical</p>
             </div>
         </div>
-        <div class="bg-white border border-amber-200 border-r-4 border-r-amber-500 rounded-sm p-4 flex items-center gap-3 shadow-sm">
+        <div onclick="filterBySeverity('warning')" id="sev-warning" class="severity-card cursor-pointer bg-white border border-amber-200 border-r-4 border-r-amber-500 rounded-sm p-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-all ring-transparent">
             <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
                 <span class="material-symbols-outlined text-amber-500 text-[22px]">warning</span>
             </div>
@@ -40,7 +40,7 @@
                 <p class="text-2xl font-black text-amber-600">@warning</p>
             </div>
         </div>
-        <div class="bg-white border border-blue-200 border-r-4 border-r-blue-500 rounded-sm p-4 flex items-center gap-3 shadow-sm">
+        <div onclick="filterBySeverity('info')" id="sev-info" class="severity-card cursor-pointer bg-white border border-blue-200 border-r-4 border-r-blue-500 rounded-sm p-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-all ring-transparent">
             <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
                 <span class="material-symbols-outlined text-blue-500 text-[22px]">info</span>
             </div>
@@ -91,7 +91,7 @@
                 @foreach (var item in Model)
                 {
                     <div class="notification-card flex items-start gap-4 px-5 py-4 hover:bg-slate-50 transition-colors"
-                         data-category="@item.Category">
+                         data-category="@item.Category" data-severity="@item.Severity">
 
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border @item.BgColor mt-0.5">
                             <span class="material-symbols-outlined @item.IconColor text-[20px]">@item.Icon</span>
@@ -136,7 +136,11 @@
 
 @section Scripts {
 <script>
+    let currentCategory = 'all';
+    let currentSeverity = 'all';
+
     function filterTab(category) {
+        currentCategory = category;
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.remove('border-primary', 'text-primary');
             btn.classList.add('border-transparent', 'text-slate-500');
@@ -146,14 +150,42 @@
             active.classList.add('border-primary', 'text-primary');
             active.classList.remove('border-transparent', 'text-slate-500');
         }
+        applyFilters();
+    }
+
+    function filterBySeverity(severity) {
+        currentSeverity = severity;
+        document.querySelectorAll('.severity-card').forEach(card => {
+            card.classList.remove('ring-2', 'ring-offset-2', 'ring-slate-400', 'ring-red-400', 'ring-amber-400', 'ring-blue-400');
+            card.classList.add('ring-transparent');
+        });
+        const active = document.getElementById('sev-' + severity);
+        if (active) {
+            active.classList.remove('ring-transparent');
+            if (severity === 'critical') active.classList.add('ring-2', 'ring-offset-2', 'ring-red-400');
+            else if (severity === 'warning') active.classList.add('ring-2', 'ring-offset-2', 'ring-amber-400');
+            else if (severity === 'info') active.classList.add('ring-2', 'ring-offset-2', 'ring-blue-400');
+            else active.classList.add('ring-2', 'ring-offset-2', 'ring-slate-400');
+        }
+        applyFilters();
+    }
+
+    function applyFilters() {
         document.querySelectorAll('.notification-card').forEach(card => {
             const cat = card.getAttribute('data-category');
-            let show = false;
-            if (category === 'all') show = true;
-            else if (category === 'inventory') show = (cat === 'inventory' || cat === 'shortage' || cat === 'expiry');
-            else show = (cat === category);
+            const sev = card.getAttribute('data-severity');
+            
+            let showCat = false;
+            if (currentCategory === 'all') showCat = true;
+            else if (currentCategory === 'inventory') showCat = (cat === 'inventory' || cat === 'shortage' || cat === 'expiry');
+            else showCat = (cat === currentCategory);
 
-            card.style.display = show ? 'flex' : 'none';
+            let showSev = false;
+            if (currentSeverity === 'all') showSev = true;
+            else if (currentSeverity === 'info') showSev = (sev === 'info' || sev === 'normal');
+            else showSev = (sev === currentSeverity);
+
+            card.style.display = (showCat && showSev) ? 'flex' : 'none';
         });
     }
 </script>

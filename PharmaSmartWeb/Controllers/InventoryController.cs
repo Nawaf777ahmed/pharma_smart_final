@@ -1,4 +1,4 @@
-﻿//using Microsoft.AspNetCore.Authorization;
+//using Microsoft.AspNetCore.Authorization;
 //using Microsoft.AspNetCore.Mvc;
 //using Microsoft.EntityFrameworkCore;
 //using PharmaSmartWeb.Filters;
@@ -182,6 +182,39 @@ namespace PharmaSmartWeb.Controllers
             }
 
             return View(shortages);
+        }
+
+        // ==========================================
+        // ⚠️ 3. تقرير الأدوية قريبة الانتهاء
+        // ==========================================
+        [HttpGet]
+        [HasPermission("Inventory", "View")]
+        public async Task<IActionResult> Expiring()
+        {
+            int currentBranchId = ActiveBranchId;
+            ViewBag.BranchName = currentBranchId == 0 ? "كل الفروع (تجميع مركزي)" : (await _context.Branches.FindAsync(currentBranchId))?.BranchName ?? "غير محدد";
+
+            // تحديد الأدوية التي ستنتهي صلاحيتها خلال شهرين
+            var expiryThreshold = DateTime.Today.AddMonths(2);
+
+            var expiringBatches = await _context.DrugBatches
+                .Include(b => b.Drug)
+                .Where(b => b.ExpiryDate <= expiryThreshold)
+                .OrderBy(b => b.ExpiryDate)
+                .ToListAsync();
+
+            // إذا لم يكن تجميع مركزي (أي يخص فرعاً محدداً)، نعرض فقط الدفعات التي يمتلك الفرع رصيداً منها
+            if (currentBranchId != 0 && !IsSuperAdmin)
+            {
+                var branchDrugs = await _context.Branchinventory
+                    .Where(bi => bi.BranchId == currentBranchId && bi.StockQuantity > 0)
+                    .Select(bi => bi.DrugId)
+                    .ToListAsync();
+                
+                expiringBatches = expiringBatches.Where(b => branchDrugs.Contains(b.DrugId)).ToList();
+            }
+
+            return View(expiringBatches);
         }
     }
 }

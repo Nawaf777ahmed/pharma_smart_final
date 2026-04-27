@@ -1,0 +1,11 @@
+**/.git
+**/.github
+**/.vscode
+**/bin
+**/obj
+**/out
+**/.DS_Store
+Dockerfile
+.dockerignore
+**/node_modules
+**/.gemini

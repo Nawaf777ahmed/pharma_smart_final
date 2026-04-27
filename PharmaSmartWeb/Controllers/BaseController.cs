@@ -35,7 +35,10 @@ namespace PharmaSmartWeb.Controllers
 
             if (string.Equals(controllerName, "Account", StringComparison.OrdinalIgnoreCase)
                 && (string.Equals(actionName, "Login", StringComparison.OrdinalIgnoreCase) || 
-                    string.Equals(actionName, "Logout", StringComparison.OrdinalIgnoreCase)))
+                    string.Equals(actionName, "Logout", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(actionName, "ForgotPassword", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(actionName, "VerifyOTP", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(actionName, "ResetPassword", StringComparison.OrdinalIgnoreCase)))
             {
                 await next();
                 return;

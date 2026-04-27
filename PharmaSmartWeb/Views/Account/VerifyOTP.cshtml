@@ -1,0 +1,128 @@
+@{
+    Layout = null;
+}
+@inject PharmaSmartWeb.Services.ISystemSettingsService Settings
+
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>تأكيد الرمز - @Settings.CompanyName</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <link rel="stylesheet" href="~/css/local-fonts.css" />
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%;
+            font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+            background: #e8edf4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .page-wrap { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 100vh; padding: 24px 16px; }
+        .card { display: flex; flex-direction: row-reverse; width: 880px; max-width: 100%; min-height: 500px; border-radius: 22px; overflow: hidden; box-shadow: 0 30px 70px rgba(20, 50, 100, 0.18), 0 6px 20px rgba(20, 50, 100, 0.10); }
+        .brand-side { flex: 0 0 42%; background: linear-gradient(155deg, #102060 0%, #1a4d82 52%, #0a7d9e 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 32px; position: relative; overflow: hidden; }
+        .brand-side::before, .brand-side::after { content: ''; position: absolute; border-radius: 50%; pointer-events: none; }
+        .brand-side::before { width: 420px; height: 420px; background: rgba(255,255,255,0.06); top: -140px; left: -140px; }
+        .brand-side::after { width: 280px; height: 280px; background: rgba(255,255,255,0.05); bottom: -80px; right: -80px; }
+        .logo-frame { background: rgba(255,255,255,0.14); border: 1.5px solid rgba(255,255,255,0.24); border-radius: 26px; padding: 26px 34px; display: flex; align-items: center; justify-content: center; margin-bottom: 28px; position: relative; z-index: 2; backdrop-filter: blur(8px); }
+        .logo-frame img { width: 220px; height: auto; object-fit: contain; display: block; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.22)); }
+        .brand-name { font-size: 28px; font-weight: 900; color: #ffffff; text-align: center; letter-spacing: -0.3px; position: relative; z-index: 2; text-shadow: 0 2px 8px rgba(0,0,0,0.25); margin-top: 4px; }
+        .form-side { flex: 1; background: #ffffff; display: flex; flex-direction: column; justify-content: center; padding: 52px 44px; }
+        .welcome-tag { font-size: 12px; font-weight: 700; color: #10b981; margin-bottom: 6px; }
+        .form-heading { font-size: 21px; font-weight: 900; color: #102060; margin-bottom: 10px; line-height: 1.35; }
+        .form-desc { font-size: 13px; color: #64748b; margin-bottom: 30px; line-height: 1.6; }
+        .err-box { display: flex; align-items: center; gap: 10px; background: #fff1f2; border: 1px solid #fecdd3; border-right: 4px solid #e11d48; border-radius: 9px; padding: 10px 14px; margin-bottom: 18px; }
+        .err-box .err-ico { color: #e11d48; font-size: 20px; flex-shrink: 0; }
+        .err-box p { font-size: 12px; font-weight: 700; color: #9f1239; }
+        .field { margin-bottom: 18px; }
+        .field-lbl { display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 7px; letter-spacing: 0.04em; text-transform: uppercase; }
+        .field-wrap { position: relative; display: flex; align-items: center; }
+        .ico-right { position: absolute; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 19px; line-height: 1; pointer-events: none; right: 13px; }
+        .inp { width: 100%; padding: 11px 44px 11px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 18px; font-weight: 700; letter-spacing: 8px; text-align: center; color: #1e293b; background: #f8fafc; outline: none; transition: border-color .22s, box-shadow .22s, background .18s; font-family: inherit; }
+        .inp::placeholder { color: #b0bec5; font-weight: 500; font-size: 13.5px; letter-spacing: 0; text-align: right; }
+        .inp:focus { border-color: #1a4d82; background: #fff; box-shadow: 0 0 0 3.5px rgba(26,77,130,0.1); }
+        .btn { width: 100%; padding: 13px 20px; background: linear-gradient(90deg, #102060 0%, #1a6ea8 100%); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; letter-spacing: .03em; font-family: inherit; transition: transform .15s, box-shadow .2s; margin-bottom: 15px; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(16,32,96,0.3); }
+        .btn:active { transform: translateY(0); }
+        .btn-outline { background: transparent; border: 1.5px solid #e2e8f0; color: #64748b; }
+        .btn-outline:hover { background: #f8fafc; box-shadow: none; transform: translateY(-1px); color: #1e293b; }
+        .sec-note { margin-top: 22px; font-size: 11px; color: #94a3b8; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 5px; text-align: center; flex-wrap: wrap; }
+        @@media (max-width: 680px) {
+            html, body { align-items: flex-start; }
+            .page-wrap { padding: 16px 12px; }
+            .card { flex-direction: column; border-radius: 16px; min-height: unset; }
+            .brand-side { flex: none; padding: 28px 20px; }
+            .logo-frame { padding: 18px 22px; margin-bottom: 16px; }
+            .logo-frame img { width: 110px; }
+            .brand-name { font-size: 20px; }
+            .form-side { padding: 28px 20px; }
+            .form-heading { font-size: 18px; margin-bottom: 10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="page-wrap">
+    <div class="card">
+        <!-- ══════════ BRAND SIDE (يسار) ══════════ -->
+        <div class="brand-side">
+            <div class="logo-frame">
+                <img src="/images/logo1.png" alt="@Settings.CompanyName" onerror="this.style.display='none'" />
+            </div>
+            <div class="brand-name">@Settings.CompanyName</div>
+        </div>
+
+        <!-- ══════════ FORM SIDE (يمين) ══════════ -->
+        <div class="form-side">
+            <div class="welcome-tag">💬 رسالة واتساب</div>
+            <div class="form-heading">إدخال رمز التحقق</div>
+            <p class="form-desc">تم إرسال رمز التحقق المكون من 6 أرقام إلى رقم الواتساب المرتبط بحساب <strong>@ViewBag.Username</strong>. يرجى إدخاله هنا.</p>
+
+            @if (ViewBag.Error != null)
+            {
+                <div class="err-box">
+                    <span class="material-symbols-outlined err-ico">error</span>
+                    <p>@ViewBag.Error</p>
+                </div>
+            }
+
+            @if (TempData["DevOtp"] != null)
+            {
+                <div style="background: #fefce8; border: 1.5px dashed #f59e0b; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; display:flex; align-items:center; gap:10px;">
+                    <span class="material-symbols-outlined" style="color:#d97706; font-size:20px; flex-shrink:0;">construction</span>
+                    <div>
+                        <p style="font-size:11px; font-weight:700; color:#92400e; margin-bottom:4px;">وضع الاختبار — لم يُعيَّن الواتساب بعد</p>
+                        <p style="font-size:18px; font-weight:900; color:#b45309; letter-spacing:6px;">@TempData["DevOtp"]</p>
+                    </div>
+                </div>
+            }
+            <form asp-action="VerifyOTP" asp-controller="Account" method="post">
+                @Html.AntiForgeryToken()
+
+                <div class="field">
+                    <label class="field-lbl" for="otpCode">رمز التحقق (OTP)</label>
+                    <div class="field-wrap">
+                        <span class="material-symbols-outlined ico-right">password</span>
+                        <input class="inp" id="otpCode" name="otpCode" placeholder="أدخل الرمز المكون من 6 أرقام" type="text" maxlength="6" pattern="\d{6}" required autofocus autocomplete="off" />
+                    </div>
+                </div>
+
+                <button class="btn" type="submit">
+                    <span class="material-symbols-outlined" style="font-size:18px">check_circle</span>
+                    تأكيد الرمز
+                </button>
+                <a href="/Account/Login" class="btn btn-outline" style="text-decoration: none;">إلغاء والعودة للبداية</a>
+            </form>
+
+            <div class="sec-note">
+                <span class="material-symbols-outlined" style="font-size:14px">verified_user</span>
+                بيئة مشفرة وآمنة &nbsp;·&nbsp; © @DateTime.Now.Year @Settings.CompanyName
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

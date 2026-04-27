@@ -796,8 +796,11 @@ namespace PharmaSmartWeb.Controllers
 
                 // EOQ وكل الكميات بوحدة الشراء (MainUnit)
                 decimal annualMainUnit = avgInMainUnit * 12m;
-                decimal eoqMainUnit    = annualMainUnit > 0
-                    ? (decimal)Math.Round(Math.Sqrt((double)(2m * annualMainUnit * 50m / 0.2m)))
+                decimal unitCostForEoq = item.AvgCost > 0 ? item.AvgCost : 100m;
+                decimal holdingCost    = unitCostForEoq * 0.2m; // 20% annual holding cost rate
+                
+                decimal eoqMainUnit    = annualMainUnit > 0 && holdingCost > 0
+                    ? (decimal)Math.Round(Math.Sqrt((double)(2m * annualMainUnit * 50m / holdingCost)))
                     : 0;
 
                 decimal stockInMainUnit = item.CurrentStock / (decimal)cf;

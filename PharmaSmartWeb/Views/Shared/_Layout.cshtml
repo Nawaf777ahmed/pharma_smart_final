@@ -378,8 +378,11 @@
     }
     else if (activeUnit == "SystemSettings" && User.IsInRole("SuperAdmin"))
     {
-    <a href="/Home/AdminHub" class="w-full py-2.5 bg-slate-800 text-white rounded-sm font-bold flex items-center justify-center gap-2 hover:opacity-90 shadow-sm transition-transform active:scale-95 text-sm">
+    <a href="/Home/AdminHub" class="w-full py-2.5 bg-slate-800 text-white rounded-sm font-bold flex items-center justify-center gap-2 hover:opacity-90 shadow-sm transition-transform active:scale-95 text-sm mb-2">
     <span class="material-symbols-outlined text-[18px]">admin_panel_settings</span> لوحة الإدارة
+    </a>
+    <a href="/DataSeeder/Index" class="w-full py-2.5 bg-primary/10 text-primary rounded-sm font-bold flex items-center justify-center gap-2 hover:bg-primary/20 transition-all text-sm border border-primary/20">
+    <span class="material-symbols-outlined text-[18px]">database</span> عقل المحاكاة
     </a>
     }
     else if (activeUnit != "Commercial")
@@ -756,7 +759,7 @@
  // 🖼️ Iframe Report Modal
  // ════════════════════════════════════════
  document.addEventListener('DOMContentLoaded', () => {
-  const reportLinks = document.querySelectorAll('aside a[href*="/Report/"], aside a[href*="/InventoryIntelligence/"], aside a[href*="/Inventory/Shortages"]');
+  const reportLinks = document.querySelectorAll('aside a[href*="/Report/"], aside a[href*="/InventoryIntelligence/"], aside a[href*="/Inventory/Shortages"], aside a[href*="/Inventory/Expiring"]');
   reportLinks.forEach(link => {
    const url = link.getAttribute('href');
    if(!url || url.includes('Index') || url.includes('PlanningHub') || url.includes('AccountReports') || url.includes('BranchReports')) return; 

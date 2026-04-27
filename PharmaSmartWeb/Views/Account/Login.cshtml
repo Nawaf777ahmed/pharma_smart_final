@@ -420,6 +420,13 @@
                     <p>@ViewBag.Error</p>
                 </div>
             }
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="err-box" style="background: #ecfdf5; border-color: #a7f3d0; border-right-color: #10b981;">
+                    <span class="material-symbols-outlined err-ico" style="color: #10b981;">check_circle</span>
+                    <p style="color: #047857;">@TempData["SuccessMessage"]</p>
+                </div>
+            }
 
             <form asp-action="Login" asp-controller="Account"
                   asp-route-returnUrl="@ViewData["ReturnUrl"]" method="post">
@@ -456,10 +463,13 @@
                     </div>
                 </div>
 
-                <!-- Remember -->
-                <div class="remember">
-                    <input id="remember" name="remember" type="checkbox" />
-                    <label for="remember">الاحتفاظ بتسجيل الدخول</label>
+                <!-- Remember & Forgot Password -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px;">
+                    <div class="remember" style="margin-bottom: 0;">
+                        <input id="remember" name="remember" type="checkbox" />
+                        <label for="remember">الاحتفاظ بتسجيل الدخول</label>
+                    </div>
+                    <a href="/Account/ForgotPassword" style="font-size: 12px; font-weight: 700; color: #1a4d82; text-decoration: none;">نسيت كلمة المرور؟</a>
                 </div>
 
                 <!-- Submit -->
