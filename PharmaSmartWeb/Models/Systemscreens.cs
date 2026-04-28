@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -32,6 +32,9 @@ namespace PharmaSmartWeb.Models
 
         [InverseProperty("Screen")]
         public virtual ICollection<Screenpermissions> Screenpermissions { get; set; }
+
+        [InverseProperty("Screen")]
+        public virtual ICollection<UserScreenPermissions> UserScreenPermissions { get; set; }
     }
 }
 

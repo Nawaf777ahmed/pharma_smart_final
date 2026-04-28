@@ -50,8 +50,32 @@ namespace PharmaSmartWeb.Services
             _httpContextAccessor = httpContextAccessor;
         }
 
-        private bool IsSuperAdmin(ClaimsPrincipal user) => user.IsInRole("SuperAdmin") || user.HasClaim("RoleId", "1");
-        private bool IsBranchManager(ClaimsPrincipal user) => user.IsInRole("BranchManager") || user.HasClaim("RoleId", "2");
+        // ✅ إصلاح: اسم الـ Claim المخزون هو "RoleID" بحرف D كبير وليس "RoleId"
+        private bool IsSuperAdmin(ClaimsPrincipal user) =>
+            user.IsInRole("SuperAdmin") || user.HasClaim("RoleID", "1") || user.HasClaim("RoleId", "1");
+
+        private bool IsBranchManager(ClaimsPrincipal user) =>
+            user.IsInRole("BranchManager") || user.HasClaim("RoleID", "2") || user.HasClaim("RoleId", "2");
+
+        // ✅ هل لدى المستخدم استثناءات فردية مخصصة؟
+        // إذا كان لديه Claims بادئتها "UserPerm_" فهذا يعني أن له استثناءات فردية
+        private bool HasUserLevelOverride(ClaimsPrincipal user) =>
+            user.HasClaim(c => c.Type == "HasUserPermissionOverride" && c.Value == "true");
+
+        // ✅ التحقق الذكي من صلاحية الشاشة:
+        // - إذا لم يكن له استثناءات فردية → يتبع قواعد الدور (الطريقة العادية)
+        // - إذا كان له استثناءات فردية → يتحقق من الـ Claims الفردية فقط (يتجاهل دوره)
+        private bool CanView(ClaimsPrincipal user, bool roleCondition, string permClaim)
+        {
+            if (IsSuperAdmin(user)) return true;
+
+            // إذا لديه استثناءات فردية → يتبعها بالكامل (لا ينظر للدور)
+            if (HasUserLevelOverride(user))
+                return user.HasClaim("Permission", permClaim);
+
+            // لا استثناءات فردية → يتبع منطق الدور العادي
+            return roleCondition || user.HasClaim("Permission", permClaim);
+        }
 
         public Task<List<MenuGroup>> GetAllowedMenusAsync(ClaimsPrincipal user)
         {
@@ -59,24 +83,28 @@ namespace PharmaSmartWeb.Services
 
             bool superAdmin = IsSuperAdmin(user);
             bool branchManager = IsBranchManager(user);
+            bool hasOverride = HasUserLevelOverride(user);
 
             // 1. العمليات التجارية (Commercial Operations)
             {
                 var group = new MenuGroup { Title = "العمليات التجارية", Icon = "storefront", Items = new List<MenuItem>() };
 
-                if (superAdmin || branchManager || user.HasClaim("Permission", "Sales.Create") || user.IsInRole("Cashier") || user.IsInRole("Pharmacist"))
+                if (CanView(user, branchManager || user.IsInRole("Cashier") || user.IsInRole("Pharmacist"), "Sales.Create"))
                     group.Items.Add(new MenuItem { Title = "نقطة البيع السريعة (POS)", Url = "/Sales/Create", Icon = "point_of_sale" });
 
-                if (superAdmin || branchManager || user.HasClaim("Permission", "Sales.View"))
+                if (CanView(user, branchManager, "Sales.View"))
+                    group.Items.Add(new MenuItem { Title = "وحدة المتاجرة", Url = "/Home/CommercialHub", Icon = "dashboard" });
+
+                if (CanView(user, branchManager, "Sales.View"))
                     group.Items.Add(new MenuItem { Title = "سجل المبيعات", Url = "/Sales/Index", Icon = "receipt_long" });
 
-                if (superAdmin || branchManager || user.HasClaim("Permission", "SalesReturn.View"))
+                if (CanView(user, branchManager, "SalesReturn.View"))
                     group.Items.Add(new MenuItem { Title = "مرتجع المبيعات", Url = "/SalesReturn/Index", Icon = "assignment_return" });
 
-                if (superAdmin || branchManager || user.HasClaim("Permission", "Purchases.View") || user.IsInRole("Storekeeper"))
+                if (CanView(user, branchManager || user.IsInRole("Storekeeper"), "Purchases.View"))
                     group.Items.Add(new MenuItem { Title = "سجل المشتريات", Url = "/Purchases/Index", Icon = "shopping_cart_checkout" });
 
-                if (superAdmin || branchManager || user.HasClaim("Permission", "PurchasesReturn.View"))
+                if (CanView(user, branchManager, "PurchasesReturn.View"))
                     group.Items.Add(new MenuItem { Title = "مرتجع المشتريات", Url = "/PurchasesReturn/Index", Icon = "remove_shopping_cart" });
 
                 if (group.Items.Any()) allowedGroups.Add(group);
@@ -88,7 +116,7 @@ namespace PharmaSmartWeb.Services
 
                 group.Items.Add(new MenuItem { Title = "لوحة تحكم المخزون", Url = "/Home/InventoryHub", Icon = "dashboard" });
 
-                if (superAdmin || branchManager || user.HasClaim("Permission", "Drug.View") || user.IsInRole("Pharmacist") || user.IsInRole("Storekeeper"))
+                if (CanView(user, branchManager || user.IsInRole("Pharmacist") || user.IsInRole("Storekeeper"), "Drug.View"))
                     group.Items.Add(new MenuItem { Title = "الأدوية والمخزون", Url = "/Drugs/Index", Icon = "medication" });
 
                 if (superAdmin || branchManager || user.IsInRole("Storekeeper") || user.IsInRole("Pharmacist"))
@@ -114,7 +142,7 @@ namespace PharmaSmartWeb.Services
             {
                 var group = new MenuGroup { Title = "المالية والحسابات", Icon = "account_balance", Items = new List<MenuItem>() };
 
-                if (superAdmin || branchManager || user.HasClaim("Permission", "Accounts.View") || user.IsInRole("Accountant"))
+                if (CanView(user, branchManager || user.IsInRole("Accountant"), "Accounts.View"))
                 {
                     group.Items.Add(new MenuItem { Title = "لوحة تحكم المالية", Url = "/Home/FinanceHub", Icon = "account_balance" });
                     group.Items.Add(new MenuItem { Title = "الدليل المحاسبي", Url = "/Accounting/Index", Icon = "account_tree" });

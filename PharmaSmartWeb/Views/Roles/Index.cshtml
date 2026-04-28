@@ -80,10 +80,20 @@ else
                 </div>
                 <h3 style="font-size:14px; font-weight:700; color:#063955; margin-bottom:6px;">@(role.RoleArabicName ?? role.RoleName)</h3>
                 <p style="font-size:11px; color:#64748b; line-height:1.6; margin-bottom:14px;">@description</p>
-                <a asp-controller="Roles" asp-action="ManagePermissions" asp-route-roleId="@role.RoleId" class="btn-manage">
-                    <span class="material-symbols-outlined" style="font-size:15px;">settings_suggest</span>
-                    ضبط مصفوفة الصلاحيات
-                </a>
+                @if (roleNameEn.Contains("admin") || role.RoleId == 1)
+                {
+                    <button disabled class="btn-manage" style="background:#94a3b8; cursor:not-allowed; color:#e2e8f0; border:1px solid #cbd5e1;" title="الصلاحيات مغلقة أمنياً لهذا الدور">
+                        <span class="material-symbols-outlined" style="font-size:15px;">lock</span>
+                        مغلق للإدارة العليا
+                    </button>
+                }
+                else
+                {
+                    <a asp-controller="Roles" asp-action="ManagePermissions" asp-route-roleId="@role.RoleId" class="btn-manage">
+                        <span class="material-symbols-outlined" style="font-size:15px;">settings_suggest</span>
+                        ضبط مصفوفة الصلاحيات
+                    </a>
+                }
             </div>
         }
     </div>

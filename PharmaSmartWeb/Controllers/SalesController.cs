@@ -135,8 +135,17 @@ namespace PharmaSmartWeb.Controllers
 
         [HttpGet]
         [HasPermission("Sales", "Add")]
-        public IActionResult Create()
+        public async Task<IActionResult> Create()
         {
+            var userId = await GetValidUserIdAsync();
+             var openShift = await _context.Shifts.FirstOrDefaultAsync(s => s.UserId == userId && s.BranchId == ActiveBranchId && s.Status == "Open");
+
+            if (openShift == null)
+            {
+                TempData["Warning"] = "لا يمكنك الدخول إلى شاشة البيع بدون وردية مفتوحة. الرجاء فتح وردية أولاً.";
+                return RedirectToAction("OpenShift", "Shifts");
+            }
+
             ViewBag.Customers = new SelectList(_context.Customers.Where(c => c.IsActive == true && (c.BranchId == ActiveBranchId || c.BranchId == 1)), "CustomerId", "FullName");
             ViewBag.CashAccounts = _context.Accounts.Where(a => a.IsActive == true && a.IsParent == false && (a.AccountName.Contains("صندوق") || a.AccountName.Contains("نقد")) && a.BranchId == ActiveBranchId).ToList();
             ViewBag.BankAccounts = _context.Accounts.Where(a => a.IsActive == true && a.IsParent == false && (a.AccountName.Contains("بنك") || a.AccountName.Contains("حساب")) && (a.BranchId == ActiveBranchId || a.BranchId == null)).ToList();
@@ -160,7 +169,7 @@ namespace PharmaSmartWeb.Controllers
 
             ViewBag.DrugsJson = System.Text.Json.JsonSerializer.Serialize(inventoryItems);
 
-            return View(new Sales { SaleDate = DateTime.Now });
+            return View(new Sales { SaleDate = DateTime.Now, ShiftId = openShift.ShiftId });
         }
 
         [HttpPost]
@@ -168,7 +177,7 @@ namespace PharmaSmartWeb.Controllers
         [HasPermission("Sales", "Add")]
         public async Task<IActionResult> Create(Sales sale, decimal CashAmount, int? CashAccountId, decimal BankAmount, int? BankAccountId)
         {
-            ModelState.Remove("Customer"); ModelState.Remove("User"); ModelState.Remove("Branch");
+            ModelState.Remove("Customer"); ModelState.Remove("User"); ModelState.Remove("Branch"); ModelState.Remove("Shift");
 
             if (sale.Saledetails != null)
             {
@@ -176,8 +185,11 @@ namespace PharmaSmartWeb.Controllers
                 for (int i = 0; i < details.Count; i++) { ModelState.Remove($"Saledetails[{i}].Sale"); ModelState.Remove($"Saledetails[{i}].Drug"); }
             }
 
+            bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+
             if (sale.Saledetails == null || !sale.Saledetails.Any())
             {
+                if (isAjax) return Json(new { success = false, message = "الفاتورة فارغة!" });
                 ViewBag.Error = "الفاتورة فارغة!";
                 return ReloadCreateView(sale);
             }
@@ -187,15 +199,26 @@ namespace PharmaSmartWeb.Controllers
                 var strategy = _context.Database.CreateExecutionStrategy();
                 try
                 {
+                    // ✅ التحقق من وجود وردية مفتوحة قبل الترحيل
+                    var userIdForShift = await GetValidUserIdAsync();
+                    var openShift = await _context.Shifts.FirstOrDefaultAsync(s => s.UserId == userIdForShift && s.BranchId == ActiveBranchId && s.Status == "Open");
+                    if (openShift == null)
+                    {
+                        if (isAjax) return Json(new { success = false, message = "لا توجد وردية مفتوحة. الرجاء فتح وردية أولاً." });
+                        ViewBag.Error = "لا توجد وردية مفتوحة. الرجاء فتح وردية أولاً.";
+                        return ReloadCreateView(sale);
+                    }
+
                     await strategy.ExecuteAsync(async () =>
                     {
                         using var transaction = await _context.Database.BeginTransactionAsync();
                         try
                         {
-                            sale.UserId = await GetValidUserIdAsync();
+                            sale.UserId = userIdForShift;
                             sale.BranchId = ActiveBranchId;
                             sale.SaleDate = DateTime.Now;
                             sale.IsReturn = false;
+                            sale.ShiftId = openShift.ShiftId;
 
                             decimal grossTotal = 0;
                             decimal totalCogs = 0;
@@ -307,7 +330,17 @@ namespace PharmaSmartWeb.Controllers
 
                     return RedirectToAction(nameof(Details), new { id = sale.SaleId, print = "true" });
                 }
-                catch (Exception ex) { ViewBag.Error = ex.Message; }
+                catch (Exception ex) 
+                { 
+                    if (isAjax) return Json(new { success = false, message = ex.Message });
+                    ViewBag.Error = ex.Message; 
+                }
+            }
+
+            if (isAjax) 
+            {
+                string errors = string.Join(" | ", ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage));
+                return Json(new { success = false, message = string.IsNullOrEmpty(ViewBag.Error) ? errors : ViewBag.Error });
             }
 
             return ReloadCreateView(sale);
@@ -323,44 +356,7 @@ namespace PharmaSmartWeb.Controllers
             return View(sale);
         }
 
-        // ==========================================
-        // 🔒 7. شاشة إغلاق الوردية (Shift Closing)
-        // ==========================================
-        [HttpGet]
-        [HasPermission("Sales", "Add")]
-        public async Task<IActionResult> CloseShift()
-        {
-            var userId = await GetValidUserIdAsync();
-            var today = DateTime.Today;
-
-            var salesToday = await _context.Sales
-                .Include(s => s.SalePayments)
-                .Where(s => s.UserId == userId && s.BranchId == ActiveBranchId && s.SaleDate.Date == today)
-                .ToListAsync();
-
-            var normalSales = salesToday.Where(s => s.IsReturn == false).ToList();
-            var returnsToday = salesToday.Where(s => s.IsReturn == true).ToList();
-
-            ViewBag.TotalSales = normalSales.Sum(s => s.NetAmount);
-            ViewBag.TotalCash = normalSales.SelectMany(s => s.SalePayments).Where(p => p.PaymentMethod == "Cash").Sum(p => p.Amount);
-            ViewBag.TotalBank = normalSales.SelectMany(s => s.SalePayments).Where(p => p.PaymentMethod == "Bank").Sum(p => p.Amount);
-            ViewBag.TotalCredit = normalSales.SelectMany(s => s.SalePayments).Where(p => p.PaymentMethod == "Credit").Sum(p => p.Amount);
-            
-            ViewBag.TotalReturns = returnsToday.Sum(s => s.NetAmount);
-            ViewBag.NetCash = (decimal)ViewBag.TotalCash - (decimal)ViewBag.TotalReturns;
-
-            return View();
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [HasPermission("Sales", "Add")]
-        public async Task<IActionResult> ConfirmCloseShift(decimal actualCash)
-        {
-            await RecordLog("CloseShift", "Sales", $"تم إغلاق وردية الكاشير بصندوق فعلي: {actualCash}");
-            TempData["Success"] = "تم إغلاق الوردية ومطابقة الصندوق بنجاح.";
-            return RedirectToAction("SalesHub", "Home");
-        }
+        // تم نقل دوال الوردية إلى ShiftsController المستقل
 
         [HttpPost]
         [ValidateAntiForgeryToken]

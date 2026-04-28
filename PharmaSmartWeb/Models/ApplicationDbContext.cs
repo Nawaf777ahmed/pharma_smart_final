@@ -45,6 +45,8 @@ namespace PharmaSmartWeb.Models
         public virtual DbSet<Systemscreens> Systemscreens { get; set; }
         public virtual DbSet<Userroles> Userroles { get; set; }
         public virtual DbSet<Users> Users { get; set; }
+        public virtual DbSet<UserScreenPermissions> UserScreenPermissions { get; set; }
+        public virtual DbSet<Shifts> Shifts { get; set; }
         public virtual DbSet<SystemLogs> Systemlogs { get; set; }
         public virtual DbSet<CompanySettings> CompanySettings { get; set; }
         

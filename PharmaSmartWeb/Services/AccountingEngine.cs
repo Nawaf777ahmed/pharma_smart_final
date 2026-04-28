@@ -119,8 +119,24 @@ namespace PharmaSmartWeb.Services
 
             if (globalMapping != null) return globalMapping.AccountId;
 
-            // إذا لم يجد شيئاً
-            throw new Exception($"طبقة الـ Resolver لم تتمكن من العثور على حساب مالي مناسب للدور المحاسبي: {role}");
+            // إذا لم يجد شيئاً، نطلق رسالة رسمية للمستخدم ليقوم بإعداد التوجيه المحاسبي
+            string arabicRoleName = role switch
+            {
+                AccountRole.Cash => "الصندوق",
+                AccountRole.Bank => "البنك",
+                AccountRole.Customer => "ذمم العملاء",
+                AccountRole.Supplier => "ذمم الموردين",
+                AccountRole.SalesRevenue => "إيراد المبيعات",
+                AccountRole.PurchaseRevenue => "إيراد المشتريات (البونص)",
+                AccountRole.COGS => "تكلفة المبيعات",
+
+                AccountRole.Inventory => "المخزون",
+                AccountRole.Tax => "الضريبة",
+                AccountRole.Discount => "الخصومات",
+                _ => role.ToString()
+            };
+
+            throw new Exception($"تنبيه التوجيه المحاسبي: لم يتم إعداد التوجيه المحاسبي الخاص بـ ({arabicRoleName}). يرجى الدخول إلى شاشة الإعدادات المالية وربط الحساب لتتمكن من إتمام هذه العملية بنجاح.");
         }
     }
 }

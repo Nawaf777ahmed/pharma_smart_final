@@ -150,7 +150,7 @@
             <h2 class="pos-title" style="font-size:24px; font-weight:900; color:#063955; margin:0;">فاتورة مبيعات جديدة</h2>
         </div>
         <div class="pos-header-actions">
-            <a href="javascript:history.length > 1 ? history.back() : window.location.href='/Home/CommercialHub'" style="background:white; color:#ef4444; border:1px solid #fecaca; padding:10px 20px; border-radius:4px; font-size:13px; font-weight:900; cursor:pointer; text-decoration:none; display:flex; align-items:center; gap:6px;">
+            <a href="javascript:history.length > 1 ? history.back() : window.location.href='/Sales/Index'" style="background:white; color:#ef4444; border:1px solid #fecaca; padding:10px 20px; border-radius:4px; font-size:13px; font-weight:900; cursor:pointer; text-decoration:none; display:flex; align-items:center; gap:6px;">
                 <span class="material-symbols-outlined" style="font-size:18px;">close</span> خروج
             </a>
             <button type="button" onclick="submitPOS()" id="btnSaveSales" disabled class="btn-submit">
@@ -257,7 +257,7 @@
                 <div class="payment-box">
                     <div class="payment-inner">
                         <label style="color:#059669;"><span class="material-symbols-outlined" style="font-size:14px;">payments</span> نقداً</label>
-                        <input type="number" step="0.01" name="CashAmount" id="valCash" value="0" oninput="validatePayments()" onfocus="this.select()" class="payment-input text-emerald-700" />
+                        <input type="number" step="0.01" id="valCash" value="0" oninput="validatePayments()" onfocus="this.select()" class="payment-input text-emerald-700" />
                     </div>
                     <select name="CashAccountId" id="accCash" onchange="validatePayments()" class="form-control" style="font-size:11px; padding:6px;">
                         <option value="">-- الصندوق --</option>
@@ -269,7 +269,7 @@
                 <div class="payment-box">
                     <div class="payment-inner">
                         <label style="color:#0284c7;"><span class="material-symbols-outlined" style="font-size:14px;">account_balance</span> شبكة/بنك</label>
-                        <input type="number" step="0.01" name="BankAmount" id="valBank" value="0" oninput="validatePayments()" onfocus="this.select()" class="payment-input text-sky-700" />
+                        <input type="number" step="0.01" id="valBank" value="0" oninput="validatePayments()" onfocus="this.select()" class="payment-input text-sky-700" />
                     </div>
                     <select name="BankAccountId" id="accBank" onchange="validatePayments()" class="form-control" style="font-size:11px; padding:6px;">
                         <option value="">-- البنك المتلقي --</option>
@@ -713,9 +713,12 @@
         if (navigator.onLine) {
             try {
                 const form = document.getElementById('salesForm');
+                
+                // إزالة الحقول المخفية القديمة فقط حتى لا نكررها، ولا نحذف الحقول المرئية
                 ['CashAmount','BankAmount','CashAccountId','BankAccountId'].forEach(n => {
-                    form.querySelectorAll(`input[name="${n}"]`).forEach(el => el.remove());
+                    form.querySelectorAll(`input[type="hidden"][name="${n}"]`).forEach(el => el.remove());
                 });
+
                 form.insertAdjacentHTML('beforeend', `<input type="hidden" name="CashAmount" value="${cashVal}" />`);
                 form.insertAdjacentHTML('beforeend', `<input type="hidden" name="BankAmount" value="${bankVal}" />`);
                 if (cashVal > 0) form.insertAdjacentHTML('beforeend', `<input type="hidden" name="CashAccountId" value="${accCash}" />`);

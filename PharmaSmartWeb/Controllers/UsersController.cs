@@ -70,6 +70,12 @@ namespace PharmaSmartWeb.Controllers
             ModelState.Remove("Purchases");
             ModelState.Remove("Sales");
             ModelState.Remove("Stockmovements");
+            ModelState.Remove("Stockaudits");
+            ModelState.Remove("Systemlogs");
+            ModelState.Remove("BarcodeGenerator");
+            ModelState.Remove("UserScreenPermissions");
+            ModelState.Remove("Email");
+            ModelState.Remove("EmployeeId");
 
             // 🚀 مدير النظام يختار الفرع يدوياً • الموظف العادي يُختم آلياً بفرعه النشط
             if (!IsSuperAdmin)
@@ -144,6 +150,12 @@ namespace PharmaSmartWeb.Controllers
             ModelState.Remove("Purchases");
             ModelState.Remove("Sales");
             ModelState.Remove("Stockmovements");
+            ModelState.Remove("Stockaudits");
+            ModelState.Remove("Systemlogs");
+            ModelState.Remove("BarcodeGenerator");
+            ModelState.Remove("UserScreenPermissions");
+            ModelState.Remove("Email");
+            ModelState.Remove("EmployeeId");
 
             if (ModelState.IsValid)
             {
@@ -233,6 +245,156 @@ namespace PharmaSmartWeb.Controllers
             ViewBag.EmployeeList = new SelectList(employeesQuery,  "EmployeeId", "FullName",   user?.EmployeeId);
             ViewBag.RoleList     = new SelectList(rolesQuery,      "RoleId",     "RoleName",   user?.RoleId);
         }
+        // ==========================================
+        // 🔐 5. شاشة مصفوفة صلاحيات المستخدم (ManagePermissions)
+        // ==========================================
+        [HttpGet]
+        [HasPermission("Users", "Edit")] // يمكن استخدام حارس مخصص أو Roles.Edit
+        public async Task<IActionResult> ManagePermissions(int roleId) // This parameter is actually userId now, named roleId because of asp-route-roleId in the View, wait, let's fix the view to use asp-route-userId instead. We will name it userId here.
+        {
+            // Fallback: If it's passed from the old view code
+            int userId = roleId; 
+            var user = await _context.Users.Include(u => u.Role).AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+
+            if (user == null) return NotFound();
+
+            if (user.Username?.ToLower() == "admin") 
+                return RedirectToAction("AccessDenied", "Home");
+
+            ViewBag.UserName = user.Username;
+            ViewBag.UserId = userId;
+            ViewBag.RoleName = user.Role?.RoleArabicName ?? user.Role?.RoleName;
+
+            var screens = await _context.Systemscreens
+                .AsNoTracking()
+                .OrderBy(s => s.ScreenCategory)
+                .ThenBy(s => s.ScreenArabicName)
+                .ToListAsync();
+
+            // Check if user has explicit permissions
+            var currentPermissions = await _context.UserScreenPermissions
+                .Where(p => p.UserId == userId)
+                .AsNoTracking()
+                .ToListAsync();
+
+            // ✅ جلب صلاحيات الدور دائماً كمرجع أساسي (Fallback)
+            var rolePermissions = await _context.Screenpermissions
+                .Where(p => p.RoleId == user.RoleId)
+                .AsNoTracking()
+                .ToListAsync();
+                
+            ViewBag.CurrentRolePermissions = rolePermissions;
+
+            if (!currentPermissions.Any())
+            {
+                ViewBag.HasExplicitPermissions = false;
+            }
+            else
+            {
+                ViewBag.CurrentPermissions = currentPermissions;
+                ViewBag.HasExplicitPermissions = true;
+            }
+
+            return View("ManagePermissions", screens);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [HasPermission("Users", "Edit")]
+        public async Task<IActionResult> UpdatePermissions(int userId, List<UserScreenPermissions> permissions)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null || user.Username?.ToLower() == "admin") 
+                return RedirectToAction("AccessDenied", "Home");
+
+            if (permissions == null || !permissions.Any())
+            {
+                TempData["Error"] = "لم يتم إرسال أي بيانات للصلاحيات.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            var strategy = _context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                using (var transaction = await _context.Database.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        // حذف جميع الصلاحيات القديمة للمستخدم
+                        var oldPermissions = _context.UserScreenPermissions.Where(p => p.UserId == userId);
+                        _context.UserScreenPermissions.RemoveRange(oldPermissions);
+                        await _context.SaveChangesAsync();
+
+                        // ✅ الإصلاح الجذري: حفظ جميع الشاشات بما فيها المحظورة (CanView=false)
+                        // يجب حفظ سجل لكل شاشة حتى تعمل آلية الاستثناءات بشكل صحيح
+                        // إذا لم يُحفَظ سجل الشاشة المحظورة، سيعود النظام لصلاحيات الدور الموروثة
+                        foreach (var perm in permissions)
+                        {
+                            perm.PermissionId = 0; // إعادة تعيين المعرف لضمان الإدراج كسجل جديد
+                            perm.UserId = userId;
+                            _context.UserScreenPermissions.Add(perm);
+                        }
+
+                        await _context.SaveChangesAsync();
+                        await transaction.CommitAsync();
+
+                        var _cache = (Microsoft.Extensions.Caching.Memory.IMemoryCache)HttpContext.RequestServices.GetService(typeof(Microsoft.Extensions.Caching.Memory.IMemoryCache));
+                        if (_cache != null)
+                        {
+                            _cache.Remove($"Permissions_UserRole_{userId}_{user.RoleId}");
+                            _cache.Remove($"Permissions_Override_{userId}_{user.RoleId}");
+                            _cache.Remove($"Filter_Permissions_UserRole_{userId}_{user.RoleId}");
+                        }
+
+                        TempData["Success"] = $"✅ تم حفظ الاستثناءات الخاصة بالمستخدم ({user.Username}). ستُطبق التعديلات عند إعادة دخوله.";
+                    }
+                    catch (System.Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        TempData["Error"] = "حدث خطأ أثناء حفظ البيانات: " + ex.Message + (ex.InnerException != null ? " | " + ex.InnerException.Message : "");
+                    }
+                }
+            });
+
+            return RedirectToAction(nameof(Index));
+        }
+        // ==========================================
+        // 🗑 7. إعادة الضبط وحذف الاستثناءات (ClearPermissions)
+        // ==========================================
+        [HttpGet]
+        [HasPermission("Users", "Edit")]
+        public async Task<IActionResult> ClearPermissions(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null || user.Username?.ToLower() == "admin") 
+                return RedirectToAction("AccessDenied", "Home");
+
+            try
+            {
+                var oldPermissions = _context.UserScreenPermissions.Where(p => p.UserId == userId);
+                _context.UserScreenPermissions.RemoveRange(oldPermissions);
+                await _context.SaveChangesAsync();
+
+                // مسح الكاش
+                var _cache = (Microsoft.Extensions.Caching.Memory.IMemoryCache)HttpContext.RequestServices.GetService(typeof(Microsoft.Extensions.Caching.Memory.IMemoryCache));
+                if (_cache != null)
+                {
+                    _cache.Remove($"Permissions_UserRole_{userId}_{user.RoleId}");
+                    _cache.Remove($"Permissions_Override_{userId}_{user.RoleId}");
+                    _cache.Remove($"Filter_Permissions_UserRole_{userId}_{user.RoleId}");
+                }
+
+                TempData["Success"] = $"🗑 تم إعادة ضبط الصلاحيات للمستخدم ({user.Username}) بنجاح وعاد لصلاحيات الدور الأصلية.";
+            }
+            catch (System.Exception ex)
+            {
+                TempData["Error"] = "حدث خطأ أثناء إعادة الضبط: " + ex.Message;
+            }
+
+            // ✅ إصلاح الخلل 404: الدالة ManagePermissions تتوقع وسيطاً باسم `roleId` وليس `id`
+            return RedirectToAction(nameof(ManagePermissions), new { roleId = userId });
+        }
+
     }
 }
 

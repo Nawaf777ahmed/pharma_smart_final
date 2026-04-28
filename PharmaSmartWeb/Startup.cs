@@ -50,7 +50,7 @@ namespace PharmaSmartWeb
             {
                 if (Environment.IsDevelopment())
                 {
-                    connectionString = "server=127.0.0.1;port=3306;database=dblast;user=root;password=;";
+                    connectionString = "server=127.0.0.1;port=3306;database=dblast3;user=root;password=;";
                 }
                 else
                 {

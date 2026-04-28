@@ -117,15 +117,29 @@
                         </td>
                         <td style="text-align:center;">
                             <div style="display:flex; justify-content:center; gap:6px;">
-                                <a href="/Users/Edit/@user.UserId" class="btn-sm btn-edit">
-                                    <span class="material-symbols-outlined" style="font-size:13px;">edit</span>
-                                    تعديل
-                                </a>
+                                @if (user.Username?.ToLower() == "admin")
+                                {
+                                    <button disabled class="btn-sm" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; cursor:not-allowed;" title="حساب مسؤول النظام محمي">
+                                        <span class="material-symbols-outlined" style="font-size:13px;">lock</span>
+                                        تعديل
+                                    </button>
+                                    <button disabled class="btn-sm" style="background:#f1f5f9; color:#94a3b8; border:1px solid #cbd5e1; cursor:not-allowed;" title="حساب مسؤول النظام محمي">
+                                        <span class="material-symbols-outlined" style="font-size:13px;">lock</span>
+                                        الصلاحيات
+                                    </button>
+                                }
+                                else
+                                {
+                                    <a href="/Users/Edit/@user.UserId" class="btn-sm btn-edit">
+                                        <span class="material-symbols-outlined" style="font-size:13px;">edit</span>
+                                        تعديل
+                                    </a>
 
-                                    <a asp-controller="Roles" asp-action="ManagePermissions" asp-route-roleId="@user.RoleId" class="btn-sm btn-key">
+                                    <a asp-controller="Users" asp-action="ManagePermissions" asp-route-roleId="@user.UserId" class="btn-sm btn-key">
                                         <span class="material-symbols-outlined" style="font-size:13px;">key</span>
                                         الصلاحيات
                                     </a>
+                                }
                             </div>
                         </td>
                     </tr>

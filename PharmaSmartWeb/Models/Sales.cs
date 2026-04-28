@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -48,6 +48,8 @@ namespace PharmaSmartWeb.Models
 
         public int? ParentSaleId { get; set; }
 
+        public int? ShiftId { get; set; }
+
         // --- ≡اؤةي╕ ╪ص┘é┘ê┘ ┘à╪╣╪د┘è┘è╪▒ ╪د┘┘ ERP (╪د┘╪ز╪ز╪ذ╪╣ ┘ê╪د┘╪ص╪░┘ ╪د┘┘à┘╪╖┘é┘è) ---
         public bool? IsDeleted { get; set; }
         public DateTime? UpdatedAt { get; set; }
@@ -73,8 +75,12 @@ namespace PharmaSmartWeb.Models
         [InverseProperty("Sale")]
         public virtual ICollection<Saledetails> Saledetails { get; set; }
 
-        // ≡اأ ╪د┘╪╣┘╪د┘é╪ر ╪د┘╪ش╪»┘è╪»╪ر ┘à╪╣ ╪ش╪»┘ê┘ ╪د┘┘à╪»┘┘ê╪╣╪د╪ز ╪د┘┘à╪│╪ز┘é┘
+        // ≡اأ€ ╪د┘„╪╣┘„╪د┘é╪ر ╪د┘„╪ش╪»┘è╪»╪ر ┘à╪╣ ╪ش╪»┘ê┘„ ╪د┘„┘à╪»┘ ┘ê╪╣╪د╪ز ╪د┘„┘à╪│╪ز┘é┘„
         [InverseProperty("Sale")]
         public virtual ICollection<SalePayments> SalePayments { get; set; }
+
+        [ForeignKey(nameof(ShiftId))]
+        [InverseProperty(nameof(Shifts.Sales))]
+        public virtual Shifts Shift { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -90,10 +90,9 @@ namespace PharmaSmartWeb.Models
         [InverseProperty("Branch")]
         public virtual ICollection<Warehouses> Warehouses { get; set; }
         [InverseProperty("Branch")]
+        public virtual ICollection<Shifts> Shifts { get; set; }
+        [InverseProperty("Branch")]
         public virtual ICollection<BranchAccounts> BranchAccounts { get; set; }
-
-        // ... ╪ذ┘é┘è╪ر ╪د┘┘ ICollections ╪د┘╪│╪د╪ذ┘é╪ر ...
-        // ≡اأ ╪د┘╪ز╪╡╪ص┘è╪ص: ╪ح╪╢╪د┘╪ر ╪د┘╪╣┘╪د┘é╪ر ╪د┘╪╣┘â╪│┘è╪ر ╪د┘┘à┘┘é┘ê╪»╪ر ╪د┘╪ز┘è ╪│╪ذ╪ذ╪ز ╪د┘╪«╪╖╪ث!
         [InverseProperty("Branch")]
         public virtual ICollection<Accounts> Accounts { get; set; }
 

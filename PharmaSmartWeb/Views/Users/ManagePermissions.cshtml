@@ -1,0 +1,258 @@
+@model IEnumerable<PharmaSmartWeb.Models.Systemscreens>
+
+@{
+    ViewData["Title"] = "إدارة صلاحيات المستخدم";
+    var userId = ViewBag.UserId;
+    var currentPermissions = ViewBag.CurrentPermissions as List<PharmaSmartWeb.Models.UserScreenPermissions> ?? new List<PharmaSmartWeb.Models.UserScreenPermissions>();
+    var currentRolePermissions = ViewBag.CurrentRolePermissions as List<PharmaSmartWeb.Models.Screenpermissions> ?? new List<PharmaSmartWeb.Models.Screenpermissions>();
+    bool hasExplicit = ViewBag.HasExplicitPermissions ?? false;
+
+    var groupedScreens = Model.GroupBy(s => s.ScreenCategory);
+
+    // ✅ الإصلاح الجوهري: دمج صلاحيات المستخدم مع صلاحيات الدور
+    // القاعدة: إذا كان للمستخدم سجل فردي لهذه الشاشة → نعرضه
+    //          إذا لم يكن له سجل فردي          → نعرض قيمة الدور (الافتراضية)
+    // هذا يضمن أن حفظ استثناء واحد لن يمسح بقية الصلاحيات الموروثة
+    bool GetPerm(int screenId, string type)
+    {
+        if (hasExplicit)
+        {
+            var userPerm = currentPermissions.FirstOrDefault(p => p.ScreenId == screenId);
+            if (userPerm != null)
+            {
+                return type switch {
+                    "view"   => userPerm.CanView,
+                    "add"    => userPerm.CanAdd,
+                    "edit"   => userPerm.CanEdit,
+                    "delete" => userPerm.CanDelete,
+                    _ => false
+                };
+            }
+        }
+        // نرجع لقيمة الدور إذا لا يوجد استثناء فردي لهذه الشاشة
+        var rolePerm = currentRolePermissions.FirstOrDefault(p => p.ScreenId == screenId);
+        if (rolePerm != null)
+        {
+            return type switch {
+                "view"   => rolePerm.CanView,
+                "add"    => rolePerm.CanAdd,
+                "edit"   => rolePerm.CanEdit,
+                "delete" => rolePerm.CanDelete,
+                _ => false
+            };
+        }
+        return false;
+    }
+}
+
+<div class="max-w-6xl mx-auto pb-24 animate-in fade-in duration-500">
+    <!-- Header Section -->
+    <header class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+            <div>
+                <nav class="flex items-center gap-2 text-slate-400 text-xs font-bold mb-4">
+                    <a href="/Home/Index" class="hover:text-sky-600 transition-colors">الرئيسية</a>
+                    <span class="material-symbols-outlined text-[14px]">chevron_left</span>
+                    <a href="/Users/Index" class="hover:text-sky-600 transition-colors">إدارة المستخدمين</a>
+                    <span class="material-symbols-outlined text-[14px]">chevron_left</span>
+                    <span class="text-sky-700">تعديل صلاحيات المستخدم</span>
+                </nav>
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 bg-amber-100 rounded-sm flex items-center justify-center text-amber-600 shadow-sm border border-slate-200 shadow-amber-900/10">
+                        <span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">person</span>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-black text-primary tracking-tight">صلاحيات المستخدم: <span class="text-sky-600">@ViewBag.UserName</span></h1>
+                        <p class="text-on-surface-variant text-sm mt-1">تحديد الاستثناءات الفردية لصلاحيات هذا المستخدم (الدور: @ViewBag.RoleName)</p>
+                    </div>
+                </div>
+            </div>
+        <a asp-action="Index" class="bg-surface text-primary border border-surface-variant px-5 py-2.5 rounded-sm font-bold flex items-center gap-2 shadow-sm hover:border-primary hover:text-primary transition-all">
+            <span class="material-symbols-outlined">arrow_forward</span>
+            <span>رجوع للقائمة</span>
+        </a>
+    </header>
+
+    <!-- Info Bar -->
+    <div class="bg-surface-container-lowest border border-surface-variant rounded-sm p-4 mb-8 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
+                <span class="material-symbols-outlined">info</span>
+            </div>
+            <div>
+                <p class="text-sm font-bold text-primary mb-1">آلية تطبيق الصلاحيات</p>
+                <p class="text-xs text-on-surface-variant">
+                    ما تراه هو الصلاحيات <strong class="text-sky-700">الفعلية للمستخدم</strong> (الاستثناءات الفردية إن وُجدت، وإلا صلاحيات الدور).
+                    بعد الحفظ تُطبَّق <strong class="text-amber-600">تلقائياً خلال 30 دقيقة</strong> أو <strong class="text-emerald-600">فوراً</strong> عند إعادة تسجيل الدخول.
+                </p>
+            </div>
+        </div>
+        <div class="flex gap-2 flex-wrap items-center">
+            @if (!hasExplicit)
+            {
+                <span class="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-sm">⚠️ يعرض الآن الصلاحيات الموروثة من الدور — لم يتم تخصيص استثناءات فردية بعد</span>
+            }
+            else
+            {
+                <span class="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-sm">✅ لديه استثناءات فردية مخصصة — الشاشات التي لم تُخصَّص تُظهر قيمة الدور</span>
+            }
+            <button type="button" class="text-xs px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-sm hover:bg-slate-200 transition-colors" onclick="document.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = true)">
+                اختيار الكل
+            </button>
+            <button type="button" class="text-xs px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-sm hover:bg-slate-200 transition-colors" onclick="document.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false)">
+                إلغاء الكل
+            </button>
+            @if (hasExplicit)
+            {
+                <button type="button" onclick="if(confirm('هل تريد حذف كل الاستثناءات الفردية والرجوع لصلاحيات الدور؟')) window.location.href='/Users/ClearPermissions?userId=@userId';"
+                        class="text-xs px-4 py-2 bg-rose-100 text-rose-700 font-bold rounded-sm hover:bg-rose-200 transition-colors">
+                    🗑 إعادة الضبط للدور
+                </button>
+            }
+        </div>
+    </div>
+
+    <form asp-action="UpdatePermissions" method="post" id="permissionsForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="userId" value="@userId" />
+
+        <div class="space-y-6">
+            @{ int i = 0; }
+            @foreach (var group in groupedScreens)
+            {
+                <div class="bg-surface-container-lowest border border-surface-variant rounded-sm overflow-hidden shadow-sm">
+                    <!-- Module Header -->
+                    @{
+                        var categoryTitles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                            {"Sales", "المبيعات"}, {"Purchases", "المشتريات"}, {"Inventory", "المخزون"},
+                            {"Accounting", "الحسابات المالية"}, {"Reports", "التقارير"}, {"SystemSettings", "إعدادات النظام"},
+                            {"Admin", "الإدارة والدعم"}, {"POS", "نقاط البيع"}, {"Settings", "الإعدادات"}, {"Finance", "المالية"},
+                            {"التجاري", "العمليات التجارية"}, {"الأدوية والمخزون", "الأدوية والمخزون"}, {"المالية", "الإدارة المالية"}, {"التقارير", "مركز التقارير"}, {"الإدارة والرقابة", "إعدادات الإدارة"}
+                        };
+                        string safeKey = group.Key ?? "";
+                        string groupName = categoryTitles.ContainsKey(safeKey) ? categoryTitles[safeKey] : (safeKey.Contains("?") ? "عام" : safeKey);
+                    }
+                    <div class="bg-surface-container p-4 border-b border-surface-variant flex items-center justify-between cursor-pointer hover:bg-surface-container-high transition-colors outline-none" onclick="this.nextElementSibling.classList.toggle('hidden');">
+                        <div class="flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary">folder_open</span>
+                            <h3 class="font-bold text-on-surface text-lg">@groupName</h3>
+                        </div>
+                        <span class="material-symbols-outlined text-on-surface-variant">keyboard_arrow_down</span>
+                    </div>
+
+                    <!-- Permissions Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right border-collapse">
+                            <thead>
+                                <tr class="bg-surface-container-low text-on-surface-variant text-sm border-b border-surface-variant">
+                                    <th class="py-3 px-4 font-bold rounded-tr-xl">الشاشة / الموديول</th>
+                                    <th class="py-3 px-4 text-center font-bold">عرض</th>
+                                    <th class="py-3 px-4 text-center font-bold">إضافة</th>
+                                    <th class="py-3 px-4 text-center font-bold">تعديل</th>
+                                    <th class="py-3 px-4 text-center font-bold">حذف</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var screen in group)
+                                {
+                                    // ✅ استخدام الدالة المدمجة: تعطي الأولوية للاستثناء الفردي وإلا ترجع قيمة الدور
+                                    bool canView   = GetPerm(screen.ScreenId, "view");
+                                    bool canAdd    = GetPerm(screen.ScreenId, "add");
+                                    bool canEdit   = GetPerm(screen.ScreenId, "edit");
+                                    bool canDelete = GetPerm(screen.ScreenId, "delete");
+
+                                    // هل لهذه الشاشة استثناء فردي محدد؟
+                                    bool hasScreenOverride = hasExplicit && currentPermissions.Any(p => p.ScreenId == screen.ScreenId);
+
+                                    <tr class="border-b border-surface-variant/50 hover:bg-surface-container-lowest/50 transition-colors @(hasScreenOverride ? "bg-sky-50/30" : "")">
+                                        <td class="py-4 px-4">
+                                            <input type="hidden" name="permissions[@i].ScreenId" value="@screen.ScreenId" />
+                                            <div class="flex flex-col">
+                                                @{
+                                                    var arabicNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                                                        {"Sales","المبيعات"}, {"SalesReturn","مرتجع المبيعات"},
+                                                        {"Purchases","المشتريات"}, {"PurchasesReturn","مرتجع المشتريات"},
+                                                        {"Customers","إدارة العملاء"}, {"Suppliers","إدارة الموردين"},
+                                                        {"Drugs","الأدوية والمخزون"}, {"Inventory","المخزون والجرد"},
+                                                        {"Warehouses","المستودعات والرفوف"}, {"ItemGroups","المجموعات العلاجية"},
+                                                        {"DrugTransfers","التحويلات المخزنية"},
+                                                        {"InventoryIntelligence","ذكاء المخزون والتخطيط"},
+                                                        {"Accounting","الدليل المحاسبي"},
+                                                        {"JournalEntries","القيود اليومية"},
+                                                        {"Vouchers","سندات القبض والصرف"},
+                                                        {"FundTransfers","التحويلات المالية"},
+                                                        {"AccountReports","التقارير المالية"},
+                                                        {"ShortageForecast","تقرير نواقص الأدوية"},
+                                                        {"Employees","سجل الموظفين"},
+                                                        {"Users","إدارة المستخدمين"},
+                                                        {"Roles","إدارة الأدوار"},
+                                                        {"Branches","إدارة الفروع"},
+                                                        {"Currencies","إدارة العملات"},
+                                                        {"BarcodeGenerator","مولد الباركود"},
+                                                        {"StockAudit","جرد المخزون"},
+                                                        {"Report","مركز التقارير"},
+                                                        {"Admin","إعدادات النظام"},
+                                                    };
+                                                    string displayName = !string.IsNullOrWhiteSpace(screen.ScreenArabicName)
+                                                        ? screen.ScreenArabicName
+                                                        : (arabicNames.ContainsKey(screen.ScreenName ?? "") ? arabicNames[screen.ScreenName] : screen.ScreenName);
+                                                }
+                                                <span class="font-bold text-sm text-primary">@displayName</span>
+                                                @if (hasScreenOverride)
+                                                {
+                                                    <span class="text-[10px] text-sky-600 font-bold">★ استثناء مخصص</span>
+                                                }
+                                                else if (string.IsNullOrWhiteSpace(screen.ScreenArabicName))
+                                                {
+                                                    <span class="text-[10px] text-slate-400 font-mono">@screen.ScreenName</span>
+                                                }
+                                            </div>
+                                        </td>
+                                        <td class="py-4 px-4 text-center">
+                                            <label class="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" name="permissions[@i].CanView" value="true" class="sr-only peer" @(canView ? "checked" : "")>
+                                                <span class="block w-11 h-6 bg-surface-variant rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></span>
+                                            </label>
+                                        </td>
+                                        <td class="py-4 px-4 text-center">
+                                            <label class="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" name="permissions[@i].CanAdd" value="true" class="sr-only peer" @(canAdd ? "checked" : "")>
+                                                <span class="block w-11 h-6 bg-surface-variant rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500 shadow-inner"></span>
+                                            </label>
+                                        </td>
+                                        <td class="py-4 px-4 text-center">
+                                            <label class="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" name="permissions[@i].CanEdit" value="true" class="sr-only peer" @(canEdit ? "checked" : "")>
+                                                <span class="block w-11 h-6 bg-surface-variant rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 shadow-inner"></span>
+                                            </label>
+                                        </td>
+
+                                        <td class="py-4 px-4 text-center">
+                                            <label class="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" name="permissions[@i].CanDelete" value="true" class="sr-only peer" @(canDelete ? "checked" : "")>
+                                                <span class="block w-11 h-6 bg-surface-variant rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500 shadow-inner"></span>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    i++;
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Sticky Footer Actions -->
+        <div class="fixed bottom-0 left-0 w-full bg-surface-container-lowest border-t border-surface-variant p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-50">
+            <div class="max-w-6xl mx-auto flex justify-end gap-3">
+                <a asp-action="Index" class="px-6 py-3 bg-surface-container text-primary font-bold rounded-sm hover:bg-surface-container-high transition-colors">
+                    إلغاء
+                </a>
+                <button type="submit" class="px-8 py-3 bg-gradient-to-br from-primary to-primary-container text-white font-bold rounded-sm shadow-sm border border-slate-200 shadow-sky-900/20 active:scale-95 transition-all flex items-center gap-2">
+                    <span class="material-symbols-outlined">save</span>
+                    حفظ استثناءات المستخدم
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
