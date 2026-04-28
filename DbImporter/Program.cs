@@ -16,7 +16,7 @@ namespace DbImporter
             string connectionString = Environment.GetEnvironmentVariable("DATABASE_URL") 
                 ?? throw new InvalidOperationException("DATABASE_URL environment variable is not set.");
 
-            string sqlFilePath = "../dblast.sql";
+            string sqlFilePath = "../dblast3.sql";
 
             if (!File.Exists(sqlFilePath))
             {
